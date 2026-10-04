@@ -5,6 +5,7 @@ import { extensionFiles } from './utils/extensionCode';
 import { getERPConfigs, pushToERP } from './utils/erpConnector';
 import ERPPanel from './components/ERPPanel';
 import ERPWizard from './components/ERPWizard';
+import DoubaoERPGuide from './components/DoubaoERPGuide';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -691,6 +692,9 @@ function App() {
               </div>
               <ERPWizard />
             </div>
+
+            {/* 豆包 ERP 对接指南 */}
+            <DoubaoERPGuide />
 
             {/* ERP Panel */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
