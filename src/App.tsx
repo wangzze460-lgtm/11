@@ -1,11 +1,13 @@
-import { useState, useCallback } from 'react';
-import { Link, Download, Code, Trash2, Copy, ExternalLink, FileSpreadsheet, Search, ShoppingBag, CheckCircle, AlertCircle } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { Link, Download, Code, Trash2, Copy, ExternalLink, FileSpreadsheet, Search, ShoppingBag, CheckCircle, AlertCircle, Server, Zap } from 'lucide-react';
 import { parseProductUrl, exportToCSV, ProductInfo } from './utils/linkParser';
 import { extensionFiles } from './utils/extensionCode';
+import { getERPConfigs, pushToERP } from './utils/erpConnector';
+import ERPPanel from './components/ERPPanel';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
-type TabType = 'collector' | 'results' | 'extension';
+type TabType = 'collector' | 'results' | 'extension' | 'erp';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('collector');
@@ -14,6 +16,35 @@ function App() {
   const [collectedLinks, setCollectedLinks] = useState<ProductInfo[]>([]);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [inputMode, setInputMode] = useState<'single' | 'bulk'>('single');
+  const [erpAutoPush, setErpAutoPush] = useState(false);
+
+  useEffect(() => {
+    const configs = getERPConfigs();
+    setErpAutoPush(configs.some(c => c.autoPush && c.enabled));
+  }, [activeTab]);
+
+  // 自动推送到 ERP
+  const autoPushToERP = useCallback(async (products: ProductInfo[]) => {
+    const configs = getERPConfigs().filter(c => c.autoPush && c.enabled);
+    if (configs.length === 0) return;
+
+    for (const product of products) {
+      const data = {
+        url: product.url,
+        platform: product.platform,
+        itemId: product.itemId || '',
+        shopId: product.shopId || '',
+        title: product.title || '',
+        price: product.price || '',
+        skuId: product.skuId || '',
+        collectedAt: product.collectedAt,
+      };
+
+      for (const config of configs) {
+        await pushToERP(config, data);
+      }
+    }
+  }, []);
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
@@ -45,9 +76,13 @@ function App() {
     if (newLinks.length > 0) {
       setCollectedLinks(prev => [...newLinks, ...prev]);
       setInputUrl('');
-      showNotification('success', `成功采集 ${newLinks.length} 个链接`);
+      showNotification('success', `成功采集 ${newLinks.length} 个链接${erpAutoPush ? '（已自动推送到ERP）' : ''}`);
+      // 自动推送到 ERP
+      if (erpAutoPush) {
+        autoPushToERP(newLinks);
+      }
     }
-  }, [inputUrl]);
+  }, [inputUrl, erpAutoPush, autoPushToERP]);
 
   const handleCollectBulk = useCallback(() => {
     if (!bulkInput.trim()) {
@@ -75,11 +110,15 @@ function App() {
     if (newLinks.length > 0) {
       setCollectedLinks(prev => [...newLinks, ...prev]);
       setBulkInput('');
-      showNotification('success', `成功采集 ${newLinks.length} 个链接${errorCount > 0 ? `，${errorCount} 个失败` : ''}`);
+      showNotification('success', `成功采集 ${newLinks.length} 个链接${errorCount > 0 ? `，${errorCount} 个失败` : ''}${erpAutoPush ? '（已自动推送到ERP）' : ''}`);
+      // 自动推送到 ERP
+      if (erpAutoPush) {
+        autoPushToERP(newLinks);
+      }
     } else {
       showNotification('error', '没有成功采集任何链接');
     }
-  }, [bulkInput]);
+  }, [bulkInput, erpAutoPush, autoPushToERP]);
 
   const handleExport = useCallback(() => {
     if (collectedLinks.length === 0) {
@@ -202,6 +241,23 @@ function App() {
           >
             <Code size={16} />
             Chrome 扩展
+          </button>
+          <button
+            onClick={() => setActiveTab('erp')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'erp'
+                ? 'bg-white text-purple-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            <Server size={16} />
+            ERP 对接
+            {erpAutoPush && (
+              <span className="flex items-center gap-0.5 bg-green-100 text-green-700 text-xs px-1.5 py-0.5 rounded-full">
+                <Zap size={10} />
+                已连接
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -595,6 +651,83 @@ function App() {
                     </pre>
                   </details>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ERP Tab */}
+        {activeTab === 'erp' && (
+          <div className="space-y-6">
+            {/* ERP Intro Banner */}
+            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-6 text-white">
+              <div className="flex items-start justify-between flex-wrap gap-4">
+                <div>
+                  <h2 className="text-xl font-bold mb-2">🔌 ERP 系统对接</h2>
+                  <p className="text-purple-100 text-sm max-w-lg">
+                    配置你的 ERP 系统后，采集到的商品链接将自动推送到你的 ERP。
+                    支持马帮、通途、店小秘、万邑通等主流 ERP，也支持自定义 API 对接。
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 bg-white/20 rounded-lg px-3 py-2">
+                  <Zap size={16} />
+                  <span className="text-sm font-medium">采集即推送，无需手动导入</span>
+                </div>
+              </div>
+            </div>
+
+            {/* ERP Panel */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <ERPPanel onTestResult={(success, message) => {
+                showNotification(success ? 'success' : 'error', message);
+              }} />
+            </div>
+
+            {/* Workflow Diagram */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">📊 工作流程</h3>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                {[
+                  { icon: '🌐', label: '浏览 Shopee/Lazada', color: 'bg-orange-50 border-orange-200' },
+                  { icon: '🔗', label: '采集商品链接', color: 'bg-blue-50 border-blue-200' },
+                  { icon: '⚡', label: '自动推送 ERP', color: 'bg-purple-50 border-purple-200' },
+                  { icon: '✅', label: 'ERP 自动入库', color: 'bg-green-50 border-green-200' },
+                ].map((step, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className={`flex flex-col items-center gap-2 p-4 rounded-xl border ${step.color}`}>
+                      <span className="text-2xl">{step.icon}</span>
+                      <span className="text-xs font-medium text-gray-700 text-center">{step.label}</span>
+                    </div>
+                    {i < 3 && (
+                      <svg className="w-6 h-6 text-gray-300 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* How to get API info */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">🔑 如何获取 ERP API 信息</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-gray-50 rounded-xl">
+                  <p className="font-medium text-gray-700 text-sm mb-2">马帮 ERP</p>
+                  <p className="text-xs text-gray-500">登录马帮后台 → 系统设置 → API管理 → 获取 AppKey 和 AppSecret</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-xl">
+                  <p className="font-medium text-gray-700 text-sm mb-2">通途 ERP</p>
+                  <p className="text-xs text-gray-500">登录通途后台 → 系统管理 → 开放平台 → 获取 API 密钥</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-xl">
+                  <p className="font-medium text-gray-700 text-sm mb-2">店小秘</p>
+                  <p className="text-xs text-gray-500">登录店小秘后台 → 设置中心 → 开发者设置 → 获取 API Token</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-xl">
+                  <p className="font-medium text-gray-700 text-sm mb-2">自建 ERP / 其他</p>
+                  <p className="text-xs text-gray-500">联系你的 ERP 开发人员，获取 API 文档和接口地址</p>
+                </div>
               </div>
             </div>
           </div>
