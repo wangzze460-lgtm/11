@@ -9,12 +9,7 @@ export const manifestJson = `{
     "https://*.lazada.*/*"
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {
@@ -29,11 +24,6 @@ export const manifestJson = `{
   ],
   "background": {
     "service_worker": "background.js"
-  },
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
   }
 }`;
 
@@ -183,14 +173,54 @@ export const contentJs = `// content.js - Content Script
       const originalPriceEl = document.querySelector('[class*="original-price"], [class*="price--original"]');
       detail.originalPrice = originalPriceEl?.textContent?.trim() || '';
       
-      // 图片
-      const imageEls = document.querySelectorAll('[class*="product-image"] img, [class*="slider"] img, [class*="carousel"] img');
+      // 图片 - 使用更通用的选择器
+      const imageSelectors = [
+        '[class*="product-image"] img',
+        '[class*="slider"] img',
+        '[class*="carousel"] img',
+        '[class*="gallery"] img',
+        '[class*="thumbnail"] img',
+        'img[src*="cf.shopee"]',
+        'img[src*="shopee"]',
+        '.product-detail img',
+        '[data-testid*="image"] img'
+      ];
+      
+      const imageEls = document.querySelectorAll(imageSelectors.join(', '));
       imageEls.forEach(img => {
-        const src = img.src || img.getAttribute('data-src');
-        if (src && !detail.images.includes(src)) {
-          detail.images.push(src);
+        // 尝试多种属性获取图片URL
+        const src = img.src || 
+                   img.getAttribute('data-src') || 
+                   img.getAttribute('data-srcset')?.split(' ')[0] ||
+                   img.getAttribute('srcset')?.split(' ')[0];
+        
+        // 过滤有效图片（排除小图标、logo等）
+        if (src && 
+            !detail.images.includes(src) && 
+            !src.includes('icon') && 
+            !src.includes('logo') &&
+            (src.includes('http') || src.startsWith('//'))) {
+          // 转换为完整URL
+          const fullUrl = src.startsWith('//') ? 'https:' + src : src;
+          detail.images.push(fullUrl);
         }
       });
+      
+      // 如果还没找到图片，尝试从页面中查找所有大图
+      if (detail.images.length === 0) {
+        const allImages = document.querySelectorAll('img');
+        allImages.forEach(img => {
+          const src = img.src || img.getAttribute('data-src');
+          const width = img.naturalWidth || img.width;
+          const height = img.naturalHeight || img.height;
+          
+          // 只收集较大的图片（可能是商品图）
+          if (src && width > 200 && height > 200 && !detail.images.includes(src)) {
+            const fullUrl = src.startsWith('//') ? 'https:' + src : src;
+            detail.images.push(fullUrl);
+          }
+        });
+      }
       
       // 描述
       const descEl = document.querySelector('[class*="product-description"], [class*="description"]');
@@ -246,14 +276,50 @@ export const contentJs = `// content.js - Content Script
       const originalPriceEl = document.querySelector('[class*="pdp-original-price"]');
       detail.originalPrice = originalPriceEl?.textContent?.trim() || '';
       
-      // 图片
-      const imageEls = document.querySelectorAll('[class*="pdp-mod-common-image"] img, [class*="gallery"] img');
+      // 图片 - 使用更通用的选择器
+      const imageSelectors = [
+        '[class*="pdp-mod-common-image"] img',
+        '[class*="gallery"] img',
+        '[class*="slider"] img',
+        '[class*="carousel"] img',
+        '[class*="thumbnail"] img',
+        'img[src*="lazada"]',
+        'img[src*="lzd"]',
+        '.pdp-block img',
+        '[data-testid*="image"] img'
+      ];
+      
+      const imageEls = document.querySelectorAll(imageSelectors.join(', '));
       imageEls.forEach(img => {
-        const src = img.src || img.getAttribute('data-src');
-        if (src && !detail.images.includes(src)) {
-          detail.images.push(src);
+        const src = img.src || 
+                   img.getAttribute('data-src') || 
+                   img.getAttribute('data-srcset')?.split(' ')[0] ||
+                   img.getAttribute('srcset')?.split(' ')[0];
+        
+        if (src && 
+            !detail.images.includes(src) && 
+            !src.includes('icon') && 
+            !src.includes('logo') &&
+            (src.includes('http') || src.startsWith('//'))) {
+          const fullUrl = src.startsWith('//') ? 'https:' + src : src;
+          detail.images.push(fullUrl);
         }
       });
+      
+      // 如果还没找到图片，尝试从页面中查找所有大图
+      if (detail.images.length === 0) {
+        const allImages = document.querySelectorAll('img');
+        allImages.forEach(img => {
+          const src = img.src || img.getAttribute('data-src');
+          const width = img.naturalWidth || img.width;
+          const height = img.naturalHeight || img.height;
+          
+          if (src && width > 200 && height > 200 && !detail.images.includes(src)) {
+            const fullUrl = src.startsWith('//') ? 'https:' + src : src;
+            detail.images.push(fullUrl);
+          }
+        });
+      }
       
       // 描述
       const descEl = document.querySelector('[class*="pdp-product-description"], [class*="product-description"]');

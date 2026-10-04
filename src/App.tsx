@@ -159,24 +159,49 @@ function App() {
   }, []);
 
   const handleDownloadExtension = async () => {
-    const zip = new JSZip();
-    
-    for (const [filename, content] of Object.entries(extensionFiles)) {
-      zip.file(filename, content);
+    try {
+      const zip = new JSZip();
+      
+      // 添加所有扩展文件
+      for (const [filename, content] of Object.entries(extensionFiles)) {
+        zip.file(filename, content);
+      }
+
+      // 添加安装说明
+      zip.file('安装说明.txt', `Shopee & Lazada 链接采集器 安装步骤
+=====================================
+
+1. 解压这个 ZIP 文件到任意文件夹
+
+2. 打开 Chrome 浏览器，地址栏输入：chrome://extensions/
+
+3. 开启右上角的「开发者模式」
+
+4. 点击「加载已解压的扩展程序」
+
+5. 选择解压后的文件夹
+
+6. 完成！打开 Shopee 或 Lazada 网站即可使用
+
+使用方法：
+- 在商品页面点击右下角的橙色按钮即可采集
+- 点击扩展图标可以查看和管理采集的链接
+- 支持导出 CSV 文件
+
+注意事项：
+- 采集商品详情（包括图片）需要在商品详情页操作
+- 列表页只能采集商品链接
+- 采集的数据会自动保存到扩展存储中
+
+如有问题，请联系开发者。`);
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      saveAs(blob, 'shopee-lazada-link-collector.zip');
+      showNotification('success', '✓ 扩展已下载！请查看安装说明');
+    } catch (error) {
+      console.error('下载失败:', error);
+      showNotification('error', '下载失败，请重试');
     }
-
-    // 添加图标目录说明
-    zip.file('icons/README.md', `# 图标文件
-请将以下尺寸的图标放入此目录：
-- icon16.png (16x16)
-- icon48.png (48x48)  
-- icon128.png (128x128)
-
-你可以使用任何在线工具生成图标，或使用默认的链接图标。`);
-
-    const blob = await zip.generateAsync({ type: 'blob' });
-    saveAs(blob, 'shopee-lazada-link-collector.zip');
-    showNotification('success', '扩展已下载，请解压后加载到Chrome');
   };
 
   return (
@@ -579,11 +604,10 @@ function App() {
                 {[
                   { step: 1, title: '下载扩展', desc: '点击上方"下载扩展"按钮，获取 ZIP 压缩包' },
                   { step: 2, title: '解压文件', desc: '将下载的 ZIP 文件解压到一个文件夹中' },
-                  { step: 3, title: '添加图标', desc: '在 icons 文件夹中放入 16x16、48x48、128x128 的 PNG 图标（可选）' },
-                  { step: 4, title: '打开扩展管理', desc: '在 Chrome 地址栏输入 chrome://extensions/ 并回车' },
-                  { step: 5, title: '开启开发者模式', desc: '在扩展管理页面右上角开启"开发者模式"' },
-                  { step: 6, title: '加载扩展', desc: '点击"加载已解压的扩展程序"，选择解压后的文件夹' },
-                  { step: 7, title: '开始使用', desc: '打开 Shopee 或 Lazada 网站，点击页面右下角的采集按钮即可' },
+                  { step: 3, title: '打开扩展管理', desc: '在 Chrome 地址栏输入 chrome://extensions/ 并回车' },
+                  { step: 4, title: '开启开发者模式', desc: '在扩展管理页面右上角开启"开发者模式"' },
+                  { step: 5, title: '加载扩展', desc: '点击"加载已解压的扩展程序"，选择解压后的文件夹' },
+                  { step: 6, title: '开始使用', desc: '打开 Shopee 或 Lazada 网站，点击页面右下角的采集按钮即可' },
                 ].map(item => (
                   <div key={item.step} className="flex items-start gap-3">
                     <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
