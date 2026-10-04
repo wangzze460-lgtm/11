@@ -4,6 +4,7 @@ import { parseProductUrl, exportToCSV, ProductInfo } from './utils/linkParser';
 import { extensionFiles } from './utils/extensionCode';
 import { getERPConfigs, pushToERP } from './utils/erpConnector';
 import ERPPanel from './components/ERPPanel';
+import ERPWizard from './components/ERPWizard';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -674,6 +675,21 @@ function App() {
                   <span className="text-sm font-medium">采集即推送，无需手动导入</span>
                 </div>
               </div>
+            </div>
+
+            {/* ERP Wizard - 对接向导 */}
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 p-6">
+              <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    🧭 不知道怎么做？用对接向导
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    回答几个简单问题，我帮你生成完整的对接方案和代码，直接发给程序员就行
+                  </p>
+                </div>
+              </div>
+              <ERPWizard />
             </div>
 
             {/* ERP Panel */}
