@@ -154,6 +154,152 @@ export const contentJs = `// content.js - Content Script
   
   if (!isShopee && !isLazada) return;
   
+  // 提取商品详情的函数
+  function extractProductDetail() {
+    const detail = {
+      title: '',
+      description: '',
+      price: '',
+      originalPrice: '',
+      images: [],
+      specifications: {},
+      variants: [],
+      rating: 0,
+      soldCount: 0,
+      shopName: '',
+      category: ''
+    };
+    
+    if (isShopee) {
+      // 标题
+      const titleEl = document.querySelector('h1, [class*="product-title"], [class*="pdp-product-title"]');
+      detail.title = titleEl?.textContent?.trim() || '';
+      
+      // 价格
+      const priceEl = document.querySelector('[class*="product-price"], [class*="price"]');
+      detail.price = priceEl?.textContent?.trim() || '';
+      
+      // 原价
+      const originalPriceEl = document.querySelector('[class*="original-price"], [class*="price--original"]');
+      detail.originalPrice = originalPriceEl?.textContent?.trim() || '';
+      
+      // 图片
+      const imageEls = document.querySelectorAll('[class*="product-image"] img, [class*="slider"] img, [class*="carousel"] img');
+      imageEls.forEach(img => {
+        const src = img.src || img.getAttribute('data-src');
+        if (src && !detail.images.includes(src)) {
+          detail.images.push(src);
+        }
+      });
+      
+      // 描述
+      const descEl = document.querySelector('[class*="product-description"], [class*="description"]');
+      detail.description = descEl?.textContent?.trim() || '';
+      
+      // 规格
+      const specEls = document.querySelectorAll('[class*="specification"] tr, [class*="specs"] li');
+      specEls.forEach(el => {
+        const label = el.querySelector('td:first-child, .label, dt')?.textContent?.trim();
+        const value = el.querySelector('td:last-child, .value, dd')?.textContent?.trim();
+        if (label && value) {
+          detail.specifications[label] = value;
+        }
+      });
+      
+      // 变体/SKU
+      const variantEls = document.querySelectorAll('[class*="product-variant"] button, [class*="sku"] button');
+      variantEls.forEach(el => {
+        const name = el.textContent?.trim();
+        if (name) {
+          detail.variants.push({ name });
+        }
+      });
+      
+      // 评分
+      const ratingEl = document.querySelector('[class*="rating"], [class*="star"]');
+      const ratingText = ratingEl?.textContent?.match(/([\\d.]+)/);
+      if (ratingText) {
+        detail.rating = parseFloat(ratingText[1]);
+      }
+      
+      // 销量
+      const soldEl = document.querySelector('[class*="sold"], [class*="sales"]');
+      const soldText = soldEl?.textContent?.match(/([\\d,]+)/);
+      if (soldText) {
+        detail.soldCount = parseInt(soldText[1].replace(/,/g, ''));
+      }
+      
+      // 店铺名
+      const shopEl = document.querySelector('[class*="shop-name"], [class*="seller-name"]');
+      detail.shopName = shopEl?.textContent?.trim() || '';
+      
+    } else if (isLazada) {
+      // 标题
+      const titleEl = document.querySelector('h1, [class*="pdp-product-title"]');
+      detail.title = titleEl?.textContent?.trim() || '';
+      
+      // 价格
+      const priceEl = document.querySelector('[class*="pdp-price"], [class*="product-price"]');
+      detail.price = priceEl?.textContent?.trim() || '';
+      
+      // 原价
+      const originalPriceEl = document.querySelector('[class*="pdp-original-price"]');
+      detail.originalPrice = originalPriceEl?.textContent?.trim() || '';
+      
+      // 图片
+      const imageEls = document.querySelectorAll('[class*="pdp-mod-common-image"] img, [class*="gallery"] img');
+      imageEls.forEach(img => {
+        const src = img.src || img.getAttribute('data-src');
+        if (src && !detail.images.includes(src)) {
+          detail.images.push(src);
+        }
+      });
+      
+      // 描述
+      const descEl = document.querySelector('[class*="pdp-product-description"], [class*="product-description"]');
+      detail.description = descEl?.textContent?.trim() || '';
+      
+      // 规格
+      const specEls = document.querySelectorAll('[class*="specification"] tr, [class*="specifications"] li');
+      specEls.forEach(el => {
+        const label = el.querySelector('td:first-child, .title')?.textContent?.trim();
+        const value = el.querySelector('td:last-child, .value')?.textContent?.trim();
+        if (label && value) {
+          detail.specifications[label] = value;
+        }
+      });
+      
+      // 变体
+      const variantEls = document.querySelectorAll('[class*="sku-selection"] button, [class*="variant"] button');
+      variantEls.forEach(el => {
+        const name = el.textContent?.trim();
+        if (name) {
+          detail.variants.push({ name });
+        }
+      });
+      
+      // 评分
+      const ratingEl = document.querySelector('[class*="pdp-review-summary"]');
+      const ratingText = ratingEl?.textContent?.match(/([\\d.]+)/);
+      if (ratingText) {
+        detail.rating = parseFloat(ratingText[1]);
+      }
+      
+      // 销量
+      const soldEl = document.querySelector('[class*="pdp-review-summary"] [class*="number"]');
+      const soldText = soldEl?.textContent?.match(/([\\d,]+)/);
+      if (soldText) {
+        detail.soldCount = parseInt(soldText[1].replace(/,/g, ''));
+      }
+      
+      // 店铺名
+      const shopEl = document.querySelector('[class*="pdp-link"], [class*="seller-name"]');
+      detail.shopName = shopEl?.textContent?.trim() || '';
+    }
+    
+    return detail;
+  }
+  
   // 创建浮动采集按钮
   function createFloatingButton() {
     const container = document.createElement('div');
@@ -207,17 +353,25 @@ export const contentJs = `// content.js - Content Script
         }
       });
       
-      // 如果是商品详情页，采集当前商品信息
+      // 如果是商品详情页，采集当前商品信息（包含完整详情）
       const detailUrl = window.location.href;
       if (detailUrl.includes('/product/') || detailUrl.includes('i.')) {
-        const detailTitle = document.querySelector('h1, [class*="product-title"], [class*="pdp-product-title"]')?.textContent?.trim() || '';
-        const price = document.querySelector('[class*="price"], [class*="product-price"]')?.textContent?.trim() || '';
+        const detail = extractProductDetail();
         
         links.unshift({
           platform: 'shopee',
           url: detailUrl,
-          title: detailTitle,
-          price,
+          title: detail.title,
+          description: detail.description,
+          price: detail.price,
+          originalPrice: detail.originalPrice,
+          images: detail.images,
+          specifications: detail.specifications,
+          variants: detail.variants,
+          rating: detail.rating,
+          soldCount: detail.soldCount,
+          shopName: detail.shopName,
+          category: detail.category,
           itemId: (detailUrl.match(/i\\.(\\d+)/) || [])[1] || '',
           shopId: (detailUrl.match(/shop\\/(\\d+)/) || [])[1] || ''
         });
@@ -254,17 +408,25 @@ export const contentJs = `// content.js - Content Script
         }
       });
       
-      // 商品详情页
+      // 商品详情页（包含完整详情）
       const detailUrl = window.location.href;
       if (detailUrl.includes('/products/') || detailUrl.includes('.html')) {
-        const detailTitle = document.querySelector('h1, [class*="pdp-product-title"]')?.textContent?.trim() || '';
-        const price = document.querySelector('[class*="pdp-price"], [class*="product-price"]')?.textContent?.trim() || '';
+        const detail = extractProductDetail();
         
         links.unshift({
           platform: 'lazada',
           url: detailUrl,
-          title: detailTitle,
-          price,
+          title: detail.title,
+          description: detail.description,
+          price: detail.price,
+          originalPrice: detail.originalPrice,
+          images: detail.images,
+          specifications: detail.specifications,
+          variants: detail.variants,
+          rating: detail.rating,
+          soldCount: detail.soldCount,
+          shopName: detail.shopName,
+          category: detail.category,
           itemId: (detailUrl.match(/i(\\d+)/) || [])[1] || '',
           skuId: (detailUrl.match(/-s(\\d+)/) || [])[1] || ''
         });

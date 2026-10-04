@@ -3,11 +3,23 @@ export interface ProductInfo {
   platform: 'shopee' | 'lazada' | 'unknown';
   url: string;
   title?: string;
+  description?: string;
   price?: string;
+  originalPrice?: string;
   shopName?: string;
-  itemId?: string;
   shopId?: string;
+  itemId?: string;
   skuId?: string;
+  images?: string[];
+  specifications?: Record<string, string>;
+  variants?: Array<{
+    name: string;
+    price?: string;
+    stock?: number;
+  }>;
+  rating?: number;
+  soldCount?: number;
+  category?: string;
   collectedAt: string;
 }
 
@@ -91,20 +103,29 @@ export function parseProductUrl(url: string): ProductInfo {
 }
 
 export function exportToCSV(products: ProductInfo[]): string {
-  const headers = ['平台', '商品ID', '店铺ID', 'SKU ID', '标题', '链接', '采集时间'];
+  const headers = ['平台', '商品ID', '店铺ID', 'SKU ID', '标题', '价格', '原价', '店铺名称', '评分', '销量', '商品描述', '图片数量', '规格数量', '变体数量', '链接', '采集时间'];
   const rows = products.map(p => [
     p.platform === 'shopee' ? 'Shopee' : p.platform === 'lazada' ? 'Lazada' : '未知',
     p.itemId || '',
     p.shopId || '',
     p.skuId || '',
     p.title || '',
+    p.price || '',
+    p.originalPrice || '',
+    p.shopName || '',
+    p.rating?.toString() || '',
+    p.soldCount?.toString() || '',
+    (p.description || '').substring(0, 200),
+    p.images?.length.toString() || '0',
+    p.specifications ? Object.keys(p.specifications).length.toString() : '0',
+    p.variants?.length.toString() || '0',
     p.url,
     new Date(p.collectedAt).toLocaleString('zh-CN'),
   ]);
 
   const csvContent = [
     headers.join(','),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ...rows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(','))
   ].join('\n');
 
   return '\uFEFF' + csvContent; // BOM for Excel

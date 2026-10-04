@@ -16,8 +16,16 @@ export interface ERPConfig {
     itemId: string;
     shopId: string;
     title: string;
+    description: string;
     price: string;
+    originalPrice: string;
     skuId: string;
+    shopName: string;
+    rating: string;
+    soldCount: string;
+    images: string;
+    specifications: string;
+    variants: string;
   };
   autoPush: boolean;
   lastSync?: string;
@@ -30,8 +38,16 @@ export const defaultFieldMapping = {
   itemId: 'item_id',
   shopId: 'shop_id',
   title: 'title',
+  description: 'description',
   price: 'price',
+  originalPrice: 'original_price',
   skuId: 'sku_id',
+  shopName: 'shop_name',
+  rating: 'rating',
+  soldCount: 'sold_count',
+  images: 'images',
+  specifications: 'specifications',
+  variants: 'variants',
 };
 
 // 常见 ERP 预设模板

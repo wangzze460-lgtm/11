@@ -540,7 +540,7 @@ curl -X POST https://your-erp.com/api/products \\
                 />
                 <div className="mt-2 flex flex-wrap gap-1">
                   <span className="text-xs text-gray-400">可用变量：</span>
-                  {['url', 'platform', 'itemId', 'shopId', 'title', 'price', 'skuId', 'collectedAt'].map(v => (
+                  {['url', 'platform', 'itemId', 'shopId', 'title', 'description', 'price', 'originalPrice', 'skuId', 'shopName', 'rating', 'soldCount', 'images', 'specifications', 'variants', 'collectedAt'].map(v => (
                     <button
                       key={v}
                       onClick={() => copyToClipboard(`{{${v}}}`, v)}
@@ -574,8 +574,16 @@ curl -X POST https://your-erp.com/api/products \\
   [editingConfig.fieldMapping.itemId]: "123456",
   [editingConfig.fieldMapping.shopId]: "789",
   [editingConfig.fieldMapping.title]: "商品标题",
+  [editingConfig.fieldMapping.description]: "商品描述...",
   [editingConfig.fieldMapping.price]: "99.00",
+  [editingConfig.fieldMapping.originalPrice]: "199.00",
   [editingConfig.fieldMapping.skuId]: "001",
+  [editingConfig.fieldMapping.shopName]: "店铺名称",
+  [editingConfig.fieldMapping.rating]: "4.8",
+  [editingConfig.fieldMapping.soldCount]: "1000",
+  [editingConfig.fieldMapping.images]: '["https://...","https://..."]',
+  [editingConfig.fieldMapping.specifications]: '{"颜色":"红色","尺码":"XL"}',
+  [editingConfig.fieldMapping.variants]: '[{"name":"红色-XL"},{"name":"蓝色-M"}]',
 }, null, 2)}
                 </pre>
               </div>

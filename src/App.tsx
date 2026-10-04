@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Link, Download, Code, Trash2, Copy, ExternalLink, FileSpreadsheet, Search, ShoppingBag, CheckCircle, AlertCircle, Server, Zap } from 'lucide-react';
+import { Link, Download, Code, Trash2, Copy, ExternalLink, FileSpreadsheet, Search, ShoppingBag, CheckCircle, AlertCircle, Server, Zap, Eye } from 'lucide-react';
 import { parseProductUrl, exportToCSV, ProductInfo } from './utils/linkParser';
 import { extensionFiles } from './utils/extensionCode';
 import { getERPConfigs, pushToERP } from './utils/erpConnector';
 import ERPPanel from './components/ERPPanel';
 import ERPWizard from './components/ERPWizard';
 import DoubaoERPGuide from './components/DoubaoERPGuide';
+import ProductDetail from './components/ProductDetail';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -19,6 +20,7 @@ function App() {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [inputMode, setInputMode] = useState<'single' | 'bulk'>('single');
   const [erpAutoPush, setErpAutoPush] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<ProductInfo | null>(null);
 
   useEffect(() => {
     const configs = getERPConfigs();
@@ -37,8 +39,16 @@ function App() {
         itemId: product.itemId || '',
         shopId: product.shopId || '',
         title: product.title || '',
+        description: product.description || '',
         price: product.price || '',
+        originalPrice: product.originalPrice || '',
         skuId: product.skuId || '',
+        shopName: product.shopName || '',
+        rating: product.rating?.toString() || '',
+        soldCount: product.soldCount?.toString() || '',
+        images: product.images ? JSON.stringify(product.images) : '[]',
+        specifications: product.specifications ? JSON.stringify(product.specifications) : '{}',
+        variants: product.variants ? JSON.stringify(product.variants) : '[]',
         collectedAt: product.collectedAt,
       };
 
@@ -498,6 +508,13 @@ function App() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
                               <button
+                                onClick={() => setSelectedProduct(link)}
+                                className="p-1.5 rounded-md hover:bg-blue-50 text-gray-500 hover:text-blue-600 transition-all"
+                                title="查看详情"
+                              >
+                                <Eye size={14} />
+                              </button>
+                              <button
                                 onClick={() => handleCopyUrl(link.url)}
                                 className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all"
                                 title="复制链接"
@@ -760,6 +777,14 @@ function App() {
           Shopee & Lazada 链接采集工具 v1.0 | 仅供学习研究使用
         </p>
       </footer>
+
+      {/* Product Detail Modal */}
+      {selectedProduct && (
+        <ProductDetail
+          product={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+        />
+      )}
     </div>
   );
 }
