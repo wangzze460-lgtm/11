@@ -893,6 +893,78 @@ function App() {
                 showNotification(success ? 'success' : 'error', message);
               }} />
             </div>
+
+            {/* 快速配置咱厝人 ERP */}
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl border-2 border-purple-200 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                ⚡ 快速配置咱厝人 ERP
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                点击下方按钮，一键配置咱厝人 ERP 的对接信息
+              </p>
+              <button
+                onClick={() => {
+                  const config = {
+                    id: 'zancuren-erp-' + Date.now(),
+                    name: '咱厝人 ERP',
+                    type: 'api' as const,
+                    apiUrl: 'http://erp.zancuren.com/api/products/collect',
+                    apiKey: '',
+                    apiSecret: '',
+                    authToken: '11a95ccfc9050ba877815d125585d502',
+                    authType: 'bearer' as const,
+                    method: 'POST' as const,
+                    headers: {},
+                    bodyTemplate: JSON.stringify({
+                      url: '{{url}}',
+                      platform: '{{platform}}',
+                      itemId: '{{itemId}}',
+                      shopId: '{{shopId}}',
+                      title: '{{title}}',
+                      price: '{{price}}',
+                      skuId: '{{skuId}}',
+                      collectedAt: '{{collectedAt}}'
+                    }, null, 2),
+                    fieldMapping: {
+                      url: 'url',
+                      platform: 'platform',
+                      itemId: 'itemId',
+                      shopId: 'shopId',
+                      title: 'title',
+                      description: 'description',
+                      price: 'price',
+                      originalPrice: 'originalPrice',
+                      skuId: 'skuId',
+                      shopName: 'shopName',
+                      rating: 'rating',
+                      soldCount: 'soldCount',
+                      images: 'images',
+                      specifications: 'specifications',
+                      variants: 'variants'
+                    },
+                    autoPush: true,
+                    enabled: true
+                  };
+                  
+                  // 保存到 localStorage
+                  const configs = JSON.parse(localStorage.getItem('erp_configs') || '[]');
+                  // 移除已存在的咱厝人 ERP 配置
+                  const filtered = configs.filter((c: any) => !c.name.includes('咱厝人'));
+                  filtered.push(config);
+                  localStorage.setItem('erp_configs', JSON.stringify(filtered));
+                  
+                  showNotification('success', '✓ 咱厝人 ERP 已配置完成！已开启自动推送');
+                  setErpAutoPush(true);
+                }}
+                className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-medium hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg shadow-purple-200 flex items-center justify-center gap-2"
+              >
+                <Zap size={18} />
+                一键配置咱厝人 ERP
+              </button>
+              <p className="text-xs text-gray-500 mt-3 text-center">
+                配置后，从"从油猴导入"页面导入的数据会自动推送到 ERP
+              </p>
+            </div>
           </div>
         )}
 
