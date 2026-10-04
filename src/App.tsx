@@ -196,8 +196,18 @@ function App() {
 如有问题，请联系开发者。`);
 
       const blob = await zip.generateAsync({ type: 'blob' });
-      saveAs(blob, 'shopee-lazada-link-collector.zip');
-      showNotification('success', '✓ 扩展已下载！请查看安装说明');
+      
+      // 尝试直接下载
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'shopee-lazada-link-collector.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showNotification('success', '✓ 扩展已下载！请查看浏览器下载栏或"下载"文件夹');
     } catch (error) {
       console.error('下载失败:', error);
       showNotification('error', '下载失败，请重试');
