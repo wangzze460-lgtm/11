@@ -10,12 +10,13 @@ import ProductDetail from './components/ProductDetail';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
-type TabType = 'collector' | 'results' | 'extension' | 'erp';
+type TabType = 'collector' | 'results' | 'extension' | 'erp' | 'import';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('collector');
   const [inputUrl, setInputUrl] = useState('');
   const [bulkInput, setBulkInput] = useState('');
+  const [importData, setImportData] = useState('');
   const [collectedLinks, setCollectedLinks] = useState<ProductInfo[]>([]);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [inputMode, setInputMode] = useState<'single' | 'bulk'>('single');
@@ -131,6 +132,62 @@ function App() {
       showNotification('error', '没有成功采集任何链接');
     }
   }, [bulkInput, erpAutoPush, autoPushToERP]);
+
+  // 从油猴脚本导入数据
+  const handleImportFromTampermonkey = useCallback(() => {
+    if (!importData.trim()) {
+      showNotification('error', '请粘贴从油猴脚本导出的数据');
+      return;
+    }
+
+    try {
+      // 尝试解析 JSON
+      const rawData = JSON.parse(importData);
+      const products: ProductInfo[] = [];
+
+      // 支持数组或单个对象
+      const items = Array.isArray(rawData) ? rawData : [rawData];
+
+      for (const item of items) {
+        const product: ProductInfo = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          platform: item.platform || (item.url?.includes('shopee') ? 'shopee' : 'lazada'),
+          url: item.url || '',
+          title: item.title || '',
+          description: item.description || '',
+          price: item.price || '',
+          originalPrice: item.originalPrice || '',
+          shopName: item.shopName || '',
+          itemId: item.itemId || '',
+          shopId: item.shopId || '',
+          skuId: item.skuId || '',
+          images: item.images || [],
+          specifications: item.specifications || {},
+          variants: item.variants || [],
+          rating: item.rating || 0,
+          soldCount: item.soldCount || 0,
+          collectedAt: item.collectedAt || new Date().toISOString(),
+        };
+        products.push(product);
+      }
+
+      if (products.length > 0) {
+        setCollectedLinks(prev => [...products, ...prev]);
+        setImportData('');
+        showNotification('success', `✓ 成功导入 ${products.length} 个商品${erpAutoPush ? '（已自动推送到ERP）' : ''}`);
+        
+        // 自动推送到 ERP
+        if (erpAutoPush) {
+          autoPushToERP(products);
+        }
+      } else {
+        showNotification('error', '没有解析到有效的商品数据');
+      }
+    } catch (error) {
+      console.error('导入失败：', error);
+      showNotification('error', '数据格式错误，请检查是否是有效的 JSON');
+    }
+  }, [importData, erpAutoPush, autoPushToERP]);
 
   const handleExport = useCallback(() => {
     if (collectedLinks.length === 0) {
@@ -305,6 +362,17 @@ function App() {
                 已连接
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setActiveTab('import')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'import'
+                ? 'bg-white text-green-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            <Download size={16} />
+            从油猴导入
           </button>
         </div>
       </div>
@@ -824,6 +892,191 @@ function App() {
               <ERPPanel onTestResult={(success, message) => {
                 showNotification(success ? 'success' : 'error', message);
               }} />
+            </div>
+          </div>
+        )}
+
+        {/* Import Tab */}
+        {activeTab === 'import' && (
+          <div className="space-y-6">
+            {/* Import Guide */}
+            <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-6 text-white">
+              <h2 className="text-xl font-bold mb-2">📥 从油猴脚本导入数据</h2>
+              <p className="text-green-100 text-sm">
+                把油猴脚本采集的数据导入到这个系统，然后自动推送到你的 ERP
+              </p>
+            </div>
+
+            {/* Step by Step Guide */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">📋 操作步骤</h3>
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    1
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-800">在油猴脚本里导出数据</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      在 Lazada 页面按 F12 打开控制台，输入：<code className="bg-gray-100 px-2 py-0.5 rounded text-xs">viewProducts()</code>
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      或者点击油猴图标 → 查看用户数据 → 复制 JSON 数据
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    2
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-800">复制 JSON 数据</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      复制控制台输出的 JSON 数据（整个数组）
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    3
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-800">粘贴到下面并导入</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      把 JSON 数据粘贴到输入框，点击"导入数据"
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    4
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-800">自动推送到 ERP</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      如果已配置 ERP 并开启自动推送，数据会自动发送到你的 ERP
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Import Form */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">📝 粘贴数据</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    JSON 数据（从油猴脚本导出）
+                  </label>
+                  <textarea
+                    value={importData}
+                    onChange={(e) => setImportData(e.target.value)}
+                    placeholder='粘贴 JSON 数据，例如：&#10;[&#10;  {&#10;    "url": "https://www.lazada.co.th/products/xxx",&#10;    "title": "商品标题",&#10;    "price": "99.00",&#10;    "images": ["https://..."],&#10;    "collectedAt": "2025-01-01T00:00:00.000Z"&#10;  }&#10;]'
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-green-400 focus:ring-2 focus:ring-green-100 outline-none transition-all text-sm h-48 resize-none font-mono"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleImportFromTampermonkey}
+                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-600 transition-all shadow-lg shadow-green-200"
+                  >
+                    <Download size={18} />
+                    导入数据
+                  </button>
+                  <button
+                    onClick={() => setImportData('')}
+                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-all"
+                  >
+                    清空
+                  </button>
+                </div>
+
+                {erpAutoPush && (
+                  <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg border border-green-200">
+                    <Zap size={16} className="text-green-600" />
+                    <span className="text-sm text-green-700">
+                      已开启自动推送，导入后会自动发送到 ERP
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Export Script */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">🔧 油猴脚本导出代码</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                如果你想让油猴脚本更方便地导出数据，可以更新脚本，添加导出按钮：
+              </p>
+              <div className="bg-gray-900 rounded-xl p-4 overflow-x-auto">
+                <pre className="text-xs text-gray-300 font-mono">
+{`// 在油猴脚本里添加这个函数
+window.exportProducts = function() {
+    const products = JSON.parse(GM_getValue('lazada_products', '[]'));
+    const json = JSON.stringify(products, null, 2);
+    
+    // 复制到剪贴板
+    navigator.clipboard.writeText(json).then(() => {
+        alert('✓ 已复制 ' + products.length + ' 个商品数据到剪贴板\\n\\n请粘贴到导入页面');
+    });
+    
+    console.log('导出的数据：', products);
+    return products;
+};
+
+// 然后在控制台输入：exportProducts()
+// 或者添加一个导出按钮`}
+                </pre>
+              </div>
+              <button
+                onClick={() => {
+                  const code = `window.exportProducts = function() {
+    const products = JSON.parse(GM_getValue('lazada_products', '[]'));
+    const json = JSON.stringify(products, null, 2);
+    navigator.clipboard.writeText(json).then(() => {
+        alert('✓ 已复制 ' + products.length + ' 个商品数据到剪贴板\\n\\n请粘贴到导入页面');
+    });
+    return products;
+};`;
+                  navigator.clipboard.writeText(code);
+                  showNotification('success', '✓ 导出代码已复制，添加到油猴脚本里即可');
+                }}
+                className="mt-3 flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-all"
+              >
+                <Copy size={16} />
+                复制导出代码
+              </button>
+            </div>
+
+            {/* Tips */}
+            <div className="bg-blue-50 rounded-2xl border border-blue-200 p-6">
+              <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                💡 使用提示
+              </h4>
+              <ul className="space-y-2 text-sm text-blue-800">
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-0.5">•</span>
+                  <span>导入的数据会显示在「采集结果」页面，可以查看详情、导出 CSV 或推送 ERP</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-0.5">•</span>
+                  <span>支持导入单个商品或商品数组（JSON 格式）</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-0.5">•</span>
+                  <span>如果开启了 ERP 自动推送，导入后会自动发送数据到你的 ERP</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-0.5">•</span>
+                  <span>数据保存在浏览器本地，刷新页面不会丢失</span>
+                </li>
+              </ul>
             </div>
 
             {/* Workflow Diagram */}
