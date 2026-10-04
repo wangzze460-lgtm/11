@@ -597,13 +597,69 @@ function App() {
                     点击即可一键采集当前页面的所有商品链接。
                   </p>
                 </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleDownloadExtension}
+                    className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium hover:from-orange-600 hover:to-red-600 transition-all shadow-lg shadow-orange-200"
+                  >
+                    <Download size={18} />
+                    下载扩展 (ZIP)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 手动安装指南 - 不需要下载 */}
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl border-2 border-green-200 p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-xl">💡</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800">找不到下载文件？用这个方法！</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    如果下载的文件找不到，可以直接复制下面的代码，手动创建文件。
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 space-y-3">
+                <h4 className="font-semibold text-gray-800 text-sm">手动安装步骤：</h4>
+                <ol className="space-y-2 text-sm text-gray-700">
+                  <li className="flex gap-2">
+                    <span className="font-bold text-green-600">1.</span>
+                    <span>在桌面新建一个文件夹，命名为 <code className="bg-gray-100 px-2 py-0.5 rounded">shopee-extension</code></span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold text-green-600">2.</span>
+                    <span>打开这个文件夹，点击下面的"复制所有文件"按钮</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold text-green-600">3.</span>
+                    <span>在 Chrome 地址栏输入 <code className="bg-gray-100 px-2 py-0.5 rounded">chrome://extensions/</code></span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold text-green-600">4.</span>
+                    <span>开启右上角"开发者模式"，点击"加载已解压的扩展程序"，选择你创建的文件夹</span>
+                  </li>
+                </ol>
+
                 <button
-                  onClick={handleDownloadExtension}
-                  className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium hover:from-orange-600 hover:to-red-600 transition-all shadow-lg shadow-orange-200"
+                  onClick={() => {
+                    const allFiles = Object.entries(extensionFiles)
+                      .map(([filename, content]) => `===== ${filename} =====\n${content}\n`)
+                      .join('\n');
+                    navigator.clipboard.writeText(allFiles);
+                    showNotification('success', '✓ 所有文件已复制！请按照步骤创建文件');
+                  }}
+                  className="w-full mt-3 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-all flex items-center justify-center gap-2"
                 >
-                  <Download size={18} />
-                  下载扩展 (ZIP)
+                  <Copy size={18} />
+                  复制所有文件内容
                 </button>
+                <p className="text-xs text-gray-500 text-center">
+                  复制后，在文件夹里为每个文件创建对应的文件，粘贴内容保存即可
+                </p>
               </div>
             </div>
 
@@ -688,7 +744,11 @@ function App() {
 
             {/* Code Preview */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">📄 扩展文件预览</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">📄 扩展文件（逐个复制）</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                如果上面的"复制所有文件"不好用，可以逐个复制下面的文件内容。
+                在你的文件夹里创建对应文件名的文件，粘贴内容保存即可。
+              </p>
               <div className="space-y-3">
                 {Object.entries(extensionFiles).map(([filename, content]) => (
                   <details key={filename} className="group">
@@ -697,7 +757,19 @@ function App() {
                         <Code size={14} />
                         {filename}
                       </span>
-                      <span className="text-xs text-gray-400">{content.length} 字符</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigator.clipboard.writeText(content);
+                            showNotification('success', `✓ ${filename} 已复制`);
+                          }}
+                          className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
+                        >
+                          复制
+                        </button>
+                        <span className="text-xs text-gray-400">{content.length} 字符</span>
+                      </div>
                     </summary>
                     <pre className="mt-2 p-4 bg-gray-900 rounded-lg overflow-x-auto text-xs text-gray-300 max-h-60 overflow-y-auto">
                       <code>{content}</code>
