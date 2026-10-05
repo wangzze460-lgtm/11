@@ -28,13 +28,8 @@ function App() {
     setErpAutoPush(configs.some(c => c.autoPush && c.enabled));
   }, [activeTab]);
 
-  // 油猴脚本内容（直接硬编码）
-  const tampermonkeyScript = `// ==UserScript==
-// @name         商品采集器（定制版）
-// @namespace    http://tampermonkey.net/
-// @version      9.0
-// @description  按要求采集完整商品信息
-// @match        *://*.lazada.co.th/*
+  // 自动推送到 ERP
+  const autoPushToERP = useCallback(async (products: ProductInfo[]) => {
 // @match        *://*.lazada.sg/*
 // @match        *://*.lazada.com.my/*
 // @match        *://*.lazada.vn/*
@@ -1847,21 +1842,177 @@ window.exportProducts = function() {
           <div className="space-y-6">
             {/* Header */}
             <div className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl p-6 text-white">
-              <h2 className="text-xl font-bold mb-2">🐒 油猴采集脚本（最新版）</h2>
+              <h2 className="text-xl font-bold mb-2">🐒 油猴采集脚本 v10.0（最终版）</h2>
               <p className="text-orange-100 text-sm">
-                一键复制脚本代码，安装到 Tampermonkey 即可使用。支持 Lazada/Shopee/1688 全平台采集。
+                支持 Lazada/Shopee/1688 全平台采集，自动推送 ERP。装好后只改顶部配置区，无需重新生成。
               </p>
             </div>
 
-            {/* Installation Guide */}
+            {/* 下载和复制按钮 */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">📥 获取脚本（二选一）</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {/* 下载 .js 文件 */}
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/collector.user.js');
+                      const text = await response.text();
+                      const blob = new Blob([text], { type: 'text/javascript' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'collector.user.js';
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      showNotification('success', '✓ 脚本文件已下载！打开文件复制全部内容粘贴到油猴');
+                    } catch (error: any) {
+                      showNotification('error', '下载失败：' + (error.message || '未知错误'));
+                    }
+                  }}
+                  className="flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium hover:from-blue-600 hover:to-indigo-600 transition-all shadow-lg shadow-blue-200"
+                >
+                  <Download size={20} />
+                  <div className="text-left">
+                    <div className="text-lg font-bold">下载 .js 文件</div>
+                    <div className="text-xs opacity-90">下载后用记事本打开，Ctrl+A 全选，Ctrl+C 复制</div>
+                  </div>
+                </button>
+
+                {/* 一键复制 */}
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/collector.user.js');
+                      const text = await response.text();
+                      
+                      // 使用 textarea 方案（所有浏览器都有效）
+                      const textarea = document.createElement('textarea');
+                      textarea.value = text;
+                      textarea.style.position = 'fixed';
+                      textarea.style.opacity = '0';
+                      document.body.appendChild(textarea);
+                      textarea.select();
+                      
+                      const success = document.execCommand('copy');
+                      document.body.removeChild(textarea);
+                      
+                      if (success) {
+                        showNotification('success', '✓ 脚本已复制！打开 Tampermonkey → 新建脚本 → Ctrl+V 粘贴');
+                      } else {
+                        showNotification('error', '复制失败，请改用"下载 .js 文件"方式');
+                      }
+                    } catch (error: any) {
+                      showNotification('error', '复制失败：' + (error.message || '未知错误'));
+                    }
+                  }}
+                  className="flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium hover:from-orange-600 hover:to-red-600 transition-all shadow-lg shadow-orange-200"
+                >
+                  <Copy size={20} />
+                  <div className="text-left">
+                    <div className="text-lg font-bold">一键复制脚本</div>
+                    <div className="text-xs opacity-90">复制后打开 Tampermonkey → 新建脚本 → Ctrl+V 粘贴</div>
+                  </div>
+                </button>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-sm text-yellow-800 font-medium mb-2">💡 重要说明：</p>
+                <ul className="text-sm text-yellow-700 space-y-1 list-disc list-inside">
+                  <li><strong>装好后只改顶部配置区</strong>（CONFIG 对象），其他代码无需改动</li>
+                  <li>配置区包含：ERP 地址、Token、采集间隔、图片数量等</li>
+                  <li>后续只需修改配置区，不用重新生成脚本</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* 脚本结构说明 */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">📋 脚本结构</h3>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    1
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-800">头部注释（@name/@match 等）</p>
+                    <p className="text-xs text-gray-500 mt-1">油猴元数据，定义脚本名称、匹配规则等</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    2
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-800">配置区（CONFIG 对象）</p>
+                    <p className="text-xs text-gray-500 mt-1">ERP 地址、Token、采集间隔、图片数量等 - <strong className="text-green-600">只改这里</strong></p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    3
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-800">采集逻辑</p>
+                    <p className="text-xs text-gray-500 mt-1">Lazada/Shopee/1688 采集函数、图片处理、Variants 采集等</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    4
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-800">自检提示</p>
+                    <p className="text-xs text-gray-500 mt-1">采集完成后显示成功/失败统计</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 配置区说明 */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">⚙️ 配置区说明（只改这里）</h3>
+              <div className="bg-gray-900 rounded-xl p-4 overflow-x-auto">
+                <pre className="text-xs text-gray-300 font-mono">
+{`const CONFIG = {
+  // ERP 接口地址
+  erpUrl: 'https://erp.zancuren.com/api/products/collect',
+  
+  // ERP Token（Bearer）
+  erpToken: '11a95ccfc9050ba877815d125585d502',
+  
+  // 采集间隔（毫秒），太快可能被限流
+  collectInterval: 1000,
+  
+  // 是否自动推送 ERP（false 则只保存本地）
+  autoPush: true,
+  
+  // 图片最大数量
+  maxImages: 20,
+  
+  // 是否显示调试面板
+  showDebug: true,
+  
+  // 图片最小尺寸（过滤小图标）
+  minImageSize: 300,
+};`}
+                </pre>
+              </div>
+              <p className="text-xs text-gray-500 mt-3">
+                💡 修改配置后保存脚本即可生效，无需重新生成
+              </p>
+            </div>
+
+            {/* 安装步骤 */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">📦 安装步骤</h3>
               <div className="space-y-3">
                 {[
                   { step: 1, title: '安装 Tampermonkey', desc: '在 Chrome 应用店搜索 "Tampermonkey" 并安装' },
-                  { step: 2, title: '复制脚本代码', desc: '点击下方"一键复制脚本"按钮' },
+                  { step: 2, title: '获取脚本', desc: '点击"下载 .js 文件"或"一键复制脚本"' },
                   { step: 3, title: '创建新脚本', desc: '点击 Tampermonkey 图标 → 创建新脚本' },
-                  { step: 4, title: '粘贴代码', desc: '删除默认代码，粘贴复制的脚本代码' },
+                  { step: 4, title: '粘贴代码', desc: '删除默认代码，粘贴脚本内容' },
                   { step: 5, title: '保存', desc: '按 Ctrl+S 保存脚本' },
                   { step: 6, title: '开始使用', desc: '打开 Lazada/Shopee 商品页，点击橙色采集按钮' },
                 ].map(item => (
@@ -1878,71 +2029,7 @@ window.exportProducts = function() {
               </div>
             </div>
 
-            {/* Script Copy Area */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-800">📝 脚本代码（v9.0 定制版）</h3>
-                <button
-                  onClick={async () => {
-                    if (!tampermonkeyScript) {
-                      showNotification('error', '脚本加载中，请稍后再试');
-                      return;
-                    }
-                    
-                    try {
-                      await navigator.clipboard.writeText(tampermonkeyScript);
-                      showNotification('success', '✓ 脚本已复制！请粘贴到 Tampermonkey');
-                    } catch (err) {
-                      // 如果 clipboard API 失败，使用备用方法
-                      const textarea = document.getElementById('script-textarea') as HTMLTextAreaElement;
-                      if (textarea) {
-                        textarea.select();
-                        textarea.setSelectionRange(0, 9999999);
-                        try {
-                          document.execCommand('copy');
-                          showNotification('success', '✓ 脚本已复制！请粘贴到 Tampermonkey');
-                        } catch (e) {
-                          showNotification('error', '复制失败，请手动选择文本框内容复制（Ctrl+A 全选，Ctrl+C 复制）');
-                        }
-                      }
-                    }
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg font-medium hover:from-orange-600 hover:to-red-600 transition-all shadow-lg shadow-orange-200"
-                >
-                  <Copy size={16} />
-                  一键复制全部
-                </button>
-              </div>
-              
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                <p className="text-sm text-green-800 font-medium mb-2">📋 使用方法：</p>
-                <ol className="text-sm text-green-700 space-y-1 list-decimal list-inside">
-                  <li>点击「一键复制全部」按钮</li>
-                  <li>打开 Tampermonkey → 创建新脚本</li>
-                  <li>删除默认代码，按 <kbd className="bg-green-100 px-1 rounded">Ctrl+V</kbd> 粘贴</li>
-                  <li>按 <kbd className="bg-green-100 px-1 rounded">Ctrl+S</kbd> 保存</li>
-                </ol>
-              </div>
-              
-              <textarea
-                id="script-textarea"
-                readOnly
-                value={tampermonkeyScript}
-                className="w-full h-96 p-4 bg-gray-900 text-gray-300 font-mono text-xs rounded-xl border-2 border-gray-700 focus:border-orange-500 focus:outline-none resize-none"
-                placeholder="脚本加载中..."
-              />
-
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-xs text-blue-700 flex items-start gap-2">
-                  <Info size={14} className="flex-shrink-0 mt-0.5" />
-                  <span>
-                    <strong>功能说明：</strong>采集标题、描述、高清图片、价格、规格参数、SKU变体（颜色/尺寸等）、评分、销量等完整信息，自动推送到 ERP。
-                  </span>
-                </p>
-              </div>
-            </div>
-
-            {/* Features */}
+            {/* 功能特性 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -1955,7 +2042,7 @@ window.exportProducts = function() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle size={14} className="text-green-500" />
-                    高清原图（自动转换）
+                    高清原图（自动转换，去除尺寸后缀）
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle size={14} className="text-green-500" />
@@ -1967,7 +2054,7 @@ window.exportProducts = function() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle size={14} className="text-green-500" />
-                    SKU变体（颜色、尺寸等）
+                    SKU变体（颜色/尺寸 + 每个的价格和图片）
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle size={14} className="text-green-500" />
@@ -2006,20 +2093,30 @@ window.exportProducts = function() {
               </div>
             </div>
 
-            {/* ERP Config */}
-            <div className="bg-green-50 rounded-2xl border border-green-200 p-5">
-              <h4 className="font-semibold text-green-900 mb-2 flex items-center gap-2">
-                <Server size={16} className="text-green-600" />
-                ERP 配置（已内置）
+            {/* 特殊功能 */}
+            <div className="bg-blue-50 rounded-2xl border border-blue-200 p-5">
+              <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                <Info size={16} className="text-blue-600" />
+                特殊功能
               </h4>
-              <div className="text-sm text-green-800 space-y-1">
-                <p><strong>接口地址：</strong>https://erp.zancuren.com/api/products/collect</p>
-                <p><strong>认证方式：</strong>Bearer Token</p>
-                <p><strong>Token：</strong>11a95ccfc9050ba877815d125585d502</p>
-              </div>
-              <p className="text-xs text-green-700 mt-2">
-                💡 如果需要修改 ERP 配置，点击页面上的"⚙️ 设置"按钮即可
-              </p>
+              <ul className="space-y-2 text-sm text-blue-800">
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-0.5">•</span>
+                  <span><strong>隐藏按钮功能：</strong>遇到验证码时点击左上角"隐藏按钮"，避免遮挡</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-0.5">•</span>
+                  <span><strong>调试面板：</strong>点击"调试面板"按钮查看详细采集过程和错误信息</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-0.5">•</span>
+                  <span><strong>自检统计：</strong>采集完成后显示成功/失败条数统计</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-0.5">•</span>
+                  <span><strong>本地备份：</strong>即使推送失败也会保存到本地，不会丢失数据</span>
+                </li>
+              </ul>
             </div>
           </div>
         )}
