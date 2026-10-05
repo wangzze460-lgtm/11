@@ -3,7 +3,6 @@ import { Link, Download, Code, Trash2, Copy, ExternalLink, FileSpreadsheet, Sear
 import { parseProductUrl, exportToCSV, ProductInfo } from './utils/linkParser';
 import { extensionFiles } from './utils/extensionCode';
 import { getERPConfigs, pushToERP } from './utils/erpConnector';
-import { tampermonkeyScript } from './utils/tampermonkeyScript';
 import ERPPanel from './components/ERPPanel';
 import ERPWizard from './components/ERPWizard';
 import DoubaoERPGuide from './components/DoubaoERPGuide';
@@ -23,11 +22,20 @@ function App() {
   const [inputMode, setInputMode] = useState<'single' | 'bulk'>('single');
   const [erpAutoPush, setErpAutoPush] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductInfo | null>(null);
+  const [tampermonkeyScript, setTampermonkeyScript] = useState('');
 
   useEffect(() => {
     const configs = getERPConfigs();
     setErpAutoPush(configs.some(c => c.autoPush && c.enabled));
   }, [activeTab]);
+
+  // 加载油猴脚本
+  useEffect(() => {
+    fetch('/tampermonkey.user.js')
+      .then(res => res.text())
+      .then(text => setTampermonkeyScript(text))
+      .catch(err => console.error('加载脚本失败:', err));
+  }, []);
 
   // 自动推送到 ERP
   const autoPushToERP = useCallback(async (products: ProductInfo[]) => {
@@ -1255,8 +1263,12 @@ window.exportProducts = function() {
                 <h3 className="text-lg font-semibold text-gray-800">📝 脚本代码（v9.0 定制版）</h3>
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(tampermonkeyScript);
-                    showNotification('success', '✓ 脚本已复制！请粘贴到 Tampermonkey');
+                    if (tampermonkeyScript) {
+                      navigator.clipboard.writeText(tampermonkeyScript);
+                      showNotification('success', '✓ 脚本已复制！请粘贴到 Tampermonkey');
+                    } else {
+                      showNotification('error', '脚本加载中，请稍后再试');
+                    }
                   }}
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg font-medium hover:from-orange-600 hover:to-red-600 transition-all shadow-lg shadow-orange-200"
                 >
@@ -1266,9 +1278,15 @@ window.exportProducts = function() {
               </div>
               
               <div className="bg-gray-900 rounded-xl p-4 overflow-x-auto max-h-96 overflow-y-auto">
-                <pre className="text-xs text-gray-300 font-mono whitespace-pre">
-                  {tampermonkeyScript}
-                </pre>
+                {tampermonkeyScript ? (
+                  <pre className="text-xs text-gray-300 font-mono whitespace-pre">
+                    {tampermonkeyScript}
+                  </pre>
+                ) : (
+                  <div className="text-center text-gray-500 py-8">
+                    <p>脚本加载中...</p>
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">

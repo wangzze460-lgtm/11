@@ -1,4 +1,4 @@
-export const tampermonkeyScript = `// ==UserScript==
+// ==UserScript==
 // @name         商品采集器（定制版）
 // @namespace    http://tampermonkey.net/
 // @version      9.0
@@ -42,17 +42,15 @@ export const tampermonkeyScript = `// ==UserScript==
         GM_setValue('user_config', JSON.stringify(config));
     }
     
-    // 图片URL转高清
     function convertToOriginalImage(url) {
         if (!url) return url;
-        url = url.replace(/_\\d+x\\d+\\.jpg/g, '.jpg');
-        url = url.replace(/_\\d+x\\d+\\.png/g, '.png');
-        url = url.replace(/_\\d+x\\d+\\.webp/g, '.webp');
+        url = url.replace(/_\d+x\d+\.jpg/g, '.jpg');
+        url = url.replace(/_\d+x\d+\.png/g, '.png');
+        url = url.replace(/_\d+x\d+\.webp/g, '.webp');
         url = url.split('?')[0];
         return url;
     }
     
-    // 精准判断商品图片
     function isProductImage(url, img) {
         if (!url || !url.startsWith('http')) return false;
         
@@ -99,7 +97,7 @@ export const tampermonkeyScript = `// ==UserScript==
         return false;
     }
     
-    GM_addStyle(\`
+    GM_addStyle(`
         #config-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:500px;background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.3);z-index:9999999999;padding:30px;display:none}
         #config-panel.show{display:block}
         #config-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999999998;display:none}
@@ -113,7 +111,7 @@ export const tampermonkeyScript = `// ==UserScript==
         .config-btn{flex:1;padding:12px;border:none;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer}
         .config-btn-save{background:linear-gradient(135deg,#ff6600,#ff8800);color:white}
         .config-btn-cancel{background:#f0f0f0;color:#666}
-    \`);
+    `);
     
     function detectPlatform() {
         const url = window.location.href;
@@ -172,40 +170,34 @@ export const tampermonkeyScript = `// ==UserScript==
         return product;
     }
     
-    // ⭐⭐⭐ Lazada 采集（按要求定制）
     function collectLazada(product) {
         console.log('🔍 开始采集 Lazada...');
         
-        // 标题
         const titleEl = document.querySelector('h1, [class*="pdp-product-title"]');
         if (titleEl) product.title = titleEl.textContent.trim();
         
-        // 价格
         const priceEl = document.querySelector('[class*="pdp-price"], [class*="product-price"]');
         if (priceEl) product.price = priceEl.textContent.trim();
         
-        // 原价
         const origEl = document.querySelector('[class*="pdp-original-price"], [class*="original-price"]');
         if (origEl) product.originalPrice = origEl.textContent.trim();
         
-        // ⭐⭐⭐ 1. rating 和 soldCount（真实值）
+        // rating
         const ratingSelectors = [
             '[class*="pdp-review-summary"] [class*="number"]',
             '[class*="rating"] [class*="number"]',
             '[class*="review"] [class*="rating"]',
-            '[class*="pdp-review"] [class*="score"]',
-            '.pdp-review-summary__link',
-            '[class*="star-rating"]'
+            '.pdp-review-summary__link'
         ];
         
         for (let selector of ratingSelectors) {
             const el = document.querySelector(selector);
             if (el) {
                 const text = el.textContent.trim();
-                const match = text.match(/([\\d.]+)/);
+                const match = text.match(/([\d.]+)/);
                 if (match) {
                     product.rating = parseFloat(match[1]);
-                    console.log(\`⭐ 评分：\${product.rating}（从 \${selector}）\`);
+                    console.log(`⭐ 评分：${product.rating}`);
                     break;
                 }
             }
@@ -213,37 +205,35 @@ export const tampermonkeyScript = `// ==UserScript==
         
         if (product.rating === 0) {
             const ratingData = extractDataFromScripts([
-                '"rating"\\\\s*:\\\\s*([\\\\d.]+)',
-                '"averageRating"\\\\s*:\\\\s*([\\\\d.]+)',
-                '"score"\\\\s*:\\\\s*([\\\\d.]+)'
+                '"rating"\\s*:\\s*([\\d.]+)',
+                '"averageRating"\\s*:\\s*([\\d.]+)'
             ]);
             if (ratingData.length > 0) {
                 product.rating = parseFloat(ratingData[0]);
-                console.log(\`⭐ 评分：\${product.rating}（从 script）\`);
             }
         }
         
+        // soldCount
         const reviewSelectors = [
             '[class*="pdp-review-summary"] [class*="count"]',
             '[class*="review-count"]',
-            '[class*="rating-count"]',
-            '[class*="pdp-review"] [class*="number"]:last-child'
+            '[class*="rating-count"]'
         ];
         
         for (let selector of reviewSelectors) {
             const el = document.querySelector(selector);
             if (el) {
                 const text = el.textContent.trim();
-                const match = text.match(/([\\d,]+)/);
+                const match = text.match(/([\d,]+)/);
                 if (match) {
                     product.soldCount = parseInt(match[1].replace(/,/g, ''));
-                    console.log(\`📊 评价/销量：\${product.soldCount}（从 \${selector}）\`);
+                    console.log(`📊 评价/销量：${product.soldCount}`);
                     break;
                 }
             }
         }
         
-        // ⭐⭐⭐ 2. description（Product Details/Highlights，不要页脚）
+        // description
         const descSelectors = [
             '[class*="pdp-product-description"]',
             '[class*="product-description"]',
@@ -256,29 +246,19 @@ export const tampermonkeyScript = `// ==UserScript==
             const el = document.querySelector(selector);
             if (el) {
                 let desc = el.innerText.trim();
-                
-                const footerPatterns = [
-                    /If you want to report an issue[\\s\\S]*/i,
-                    /Report this product[\\s\\S]*/i,
-                    /Copyright[\\s\\S]*/i,
-                    /All rights reserved[\\s\\S]*/i,
-                    /Terms of Use[\\s\\S]*/i,
-                    /Privacy Policy[\\s\\S]*/i
-                ];
-                
-                for (let pattern of footerPatterns) {
-                    desc = desc.replace(pattern, '').trim();
-                }
+                desc = desc.replace(/If you want to report an issue[\s\S]*/i, '').trim();
+                desc = desc.replace(/Report this product[\s\S]*/i, '').trim();
+                desc = desc.replace(/Copyright[\s\S]*/i, '').trim();
                 
                 if (desc.length > 50) {
                     product.description = desc;
-                    console.log(\`📝 描述：\${desc.length} 字符\`);
+                    console.log(`📝 描述：${desc.length} 字符`);
                     break;
                 }
             }
         }
         
-        // 图片（精准过滤）
+        // images
         const imageSet = new Set();
         document.querySelectorAll('img').forEach(img => {
             const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy');
@@ -288,8 +268,8 @@ export const tampermonkeyScript = `// ==UserScript==
         });
         
         const imgData = extractDataFromScripts([
-            '"images"\\\\s*:\\\\s*(\\\\[[\\\\s\\\\S]*?\\\\])',
-            '"gallery"\\\\s*:\\\\s*(\\\\[[\\\\s\\\\S]*?\\\\])'
+            '"images"\\s*:\\s*(\\[[\\s\\S]*?\\])',
+            '"gallery"\\s*:\\s*(\\[[\\s\\S]*?\\])'
         ]);
         imgData.forEach(data => {
             if (Array.isArray(data)) {
@@ -303,56 +283,48 @@ export const tampermonkeyScript = `// ==UserScript==
         });
         
         product.images = Array.from(imageSet).slice(0, 20);
-        console.log(\`📸 图片：\${product.images.length} 张\`);
+        console.log(`📸 图片：${product.images.length} 张`);
         
-        // 商品ID
-        const match = window.location.href.match(/-i(\\d+)/) || window.location.href.match(/i(\\d+)/);
+        // itemId
+        const match = window.location.href.match(/-i(\d+)/) || window.location.href.match(/i(\d+)/);
         if (match) product.itemId = match[1];
         
-        // ⭐⭐⭐ 5. skuId（完整SKU）
+        // skuId (完整)
         const skuMatch = window.location.href.match(/skuId=([^&]+)/);
         if (skuMatch) {
             product.skuId = decodeURIComponent(skuMatch[1]);
         }
         
         if (!product.skuId) {
-            const skuEl = document.querySelector('[class*="sku-id"], [data-sku-id], [data-skuid]');
+            const skuEl = document.querySelector('[data-sku-id], [data-skuid]');
             if (skuEl) {
-                product.skuId = skuEl.getAttribute('data-sku-id') || 
-                               skuEl.getAttribute('data-skuid') || 
-                               skuEl.textContent.trim();
+                product.skuId = skuEl.getAttribute('data-sku-id') || skuEl.getAttribute('data-skuid') || '';
             }
         }
         
         if (!product.skuId) {
             const skuData = extractDataFromScripts([
-                '"skuId"\\\\s*:\\\\s*"([^"]+)"',
-                '"sku"\\\\s*:\\\\s*"([^"]+)"',
-                '"simpleSku"\\\\s*:\\\\s*"([^"]+)"'
+                '"skuId"\\s*:\\s*"([^"]+)"',
+                '"simpleSku"\\s*:\\s*"([^"]+)"'
             ]);
-            if (skuData.length > 0) {
-                product.skuId = skuData[0];
-            }
+            if (skuData.length > 0) product.skuId = skuData[0];
         }
         
-        console.log(\`🔖 SKU ID：\${product.skuId}\`);
+        console.log(`🔖 SKU ID：${product.skuId}`);
         
-        // 店铺名
+        // shopName
         const shopEl = document.querySelector('[class*="seller-name"], [class*="pdp-link"]');
         if (shopEl) product.shopName = shopEl.textContent.trim();
         
-        // ⭐⭐⭐ 3. specifications（完整 Specifications 区块）
-        const specContainer = document.querySelector(
-            '[class*="specifications"], [class*="product-spec"], #specifications'
-        );
-        
+        // specifications
+        const specContainer = document.querySelector('[class*="specifications"], [class*="product-spec"], #specifications');
         if (specContainer) {
             specContainer.querySelectorAll('tr, li, [class*="spec-item"]').forEach(row => {
-                const cells = row.querySelectorAll('td, th, dt, dd, [class*="title"], [class*="value"]');
+                const cells = row.querySelectorAll('td, th, dt, dd');
                 if (cells.length >= 2) {
                     const label = cells[0].textContent.trim();
                     const value = cells[1].textContent.trim();
-                    if (label && value && label.length < 50 && value.length < 200) {
+                    if (label && value && label.length < 50) {
                         product.specifications[label] = value;
                     }
                 }
@@ -360,8 +332,7 @@ export const tampermonkeyScript = `// ==UserScript==
         }
         
         const specData = extractDataFromScripts([
-            '"specifications"\\\\s*:\\\\s*(\\\\{[\\\\s\\\\S]*?\\\\})',
-            '"specs"\\\\s*:\\\\s*(\\\\{[\\\\s\\\\S]*?\\\\})'
+            '"specifications"\\s*:\\s*(\\{[\\s\\S]*?\\})'
         ]);
         specData.forEach(data => {
             if (typeof data === 'object') {
@@ -369,13 +340,12 @@ export const tampermonkeyScript = `// ==UserScript==
             }
         });
         
-        console.log(\`📋 规格：\${Object.keys(product.specifications).length} 项\`, product.specifications);
+        console.log(`📋 规格：${Object.keys(product.specifications).length} 项`);
         
-        // ⭐⭐⭐ 4. variants（新格式）
+        // variants
         collectLazadaVariants(product);
     }
     
-    // ⭐⭐⭐ Lazada variants（按要求的新格式）
     function collectLazadaVariants(product) {
         console.log('🎨 开始采集 variants...');
         
@@ -386,30 +356,18 @@ export const tampermonkeyScript = `// ==UserScript==
         );
         
         skuGroups.forEach(group => {
-            const propName = group.querySelector(
-                '[class*="title"], [class*="label"], [class*="name"]'
-            )?.textContent?.trim();
-            
+            const propName = group.querySelector('[class*="title"], [class*="label"], [class*="name"]')?.textContent?.trim();
             if (!propName) return;
             
-            const variantGroup = {
-                name: propName,
-                options: []
-            };
+            const variantGroup = { name: propName, options: [] };
             
-            group.querySelectorAll(
-                '[class*="sku-value"], [class*="variant"], button, [class*="option"]'
-            ).forEach(option => {
-                const label = option.textContent?.trim() || 
-                             option.getAttribute('title') || 
-                             option.getAttribute('aria-label') || '';
+            group.querySelectorAll('[class*="sku-value"], [class*="variant"], button, [class*="option"]').forEach(option => {
+                const label = option.textContent?.trim() || option.getAttribute('title') || option.getAttribute('aria-label') || '';
                 
                 if (label && label.length < 50) {
                     const optionObj = { label: label };
                     
-                    const sku = option.getAttribute('data-sku') || 
-                               option.getAttribute('data-id') ||
-                               option.getAttribute('data-value');
+                    const sku = option.getAttribute('data-sku') || option.getAttribute('data-id') || option.getAttribute('data-value');
                     if (sku) optionObj.sku = sku;
                     
                     const price = option.getAttribute('data-price');
@@ -429,14 +387,12 @@ export const tampermonkeyScript = `// ==UserScript==
             
             if (variantGroup.options.length > 0) {
                 variants.push(variantGroup);
-                console.log(\`  📦 \${propName}: \${variantGroup.options.length} 个选项\`, 
-                           variantGroup.options.map(o => o.label));
+                console.log(`  📦 ${propName}: ${variantGroup.options.length} 个选项`);
             }
         });
         
         const skuData = extractDataFromScripts([
-            '"skus"\\\\s*:\\\\s*(\\\\[[\\\\s\\\\S]*?\\\\])',
-            '"variants"\\\\s*:\\\\s*(\\\\[[\\\\s\\\\S]*?\\\\])'
+            '"skus"\\s*:\\s*(\\[[\\s\\S]*?\\])'
         ]);
         
         if (skuData.length > 0 && Array.isArray(skuData[0])) {
@@ -444,7 +400,7 @@ export const tampermonkeyScript = `// ==UserScript==
                 const skuLabel = sku.name || sku.skuLabel || '';
                 const skuId = sku.skuId || sku.id || '';
                 const price = sku.price || sku.promotedPrice || '';
-                const image = sku.image || (sku.images && sku.images[0]) || '';
+                const image = sku.image || '';
                 
                 variants.forEach(group => {
                     group.options.forEach(option => {
@@ -461,10 +417,9 @@ export const tampermonkeyScript = `// ==UserScript==
         }
         
         product.variants = variants;
-        console.log(\`✅ variants 采集完成：\${variants.length} 组\`);
+        console.log(`✅ variants 采集完成：${variants.length} 组`);
     }
     
-    // Shopee 采集
     function collectShopee(product) {
         const titleEl = document.querySelector('h1, [class*="product-title"]');
         if (titleEl) product.title = titleEl.textContent.trim();
@@ -474,39 +429,33 @@ export const tampermonkeyScript = `// ==UserScript==
         
         const ratingEl = document.querySelector('[class*="rating"]');
         if (ratingEl) {
-            const m = ratingEl.textContent.match(/([\\d.]+)/);
+            const m = ratingEl.textContent.match(/([\d.]+)/);
             if (m) product.rating = parseFloat(m[1]);
         }
         
         const soldEl = document.querySelector('[class*="sold"], [class*="sales"]');
         if (soldEl) {
-            const m = soldEl.textContent.match(/([\\d.]+[Kk]?)/);
+            const m = soldEl.textContent.match(/([\d.]+[Kk]?)/);
             if (m) {
                 let count = m[1].replace(/[Kk]/, '');
-                if (m[1].includes('K') || m[1].includes('k')) {
-                    count = parseFloat(count) * 1000;
-                }
+                if (m[1].includes('K') || m[1].includes('k')) count = parseFloat(count) * 1000;
                 product.soldCount = parseInt(count);
             }
         }
         
         const descEl = document.querySelector('[class*="description"]');
         if (descEl) {
-            let desc = descEl.innerText.trim();
-            desc = desc.replace(/If you want to report[\\s\\S]*/i, '').trim();
-            product.description = desc;
+            product.description = descEl.innerText.trim().replace(/If you want to report[\s\S]*/i, '').trim();
         }
         
         const imageSet = new Set();
         document.querySelectorAll('img').forEach(img => {
             const src = img.src || img.getAttribute('data-src');
-            if (isProductImage(src, img)) {
-                imageSet.add(convertToOriginalImage(src));
-            }
+            if (isProductImage(src, img)) imageSet.add(convertToOriginalImage(src));
         });
         product.images = Array.from(imageSet).slice(0, 20);
         
-        const match = window.location.href.match(/i\\.(\\d+)/);
+        const match = window.location.href.match(/i\.(\d+)/);
         if (match) product.itemId = match[1];
         
         const skuMatch = window.location.href.match(/sku_id=([^&]+)/);
@@ -520,41 +469,8 @@ export const tampermonkeyScript = `// ==UserScript==
             const value = row.querySelector('td:last-child')?.textContent?.trim();
             if (label && value) product.specifications[label] = value;
         });
-        
-        collectShopeeVariants(product);
     }
     
-    function collectShopeeVariants(product) {
-        const tierVars = document.querySelectorAll('[class*="tier-variation"]');
-        
-        tierVars.forEach(group => {
-            const propName = group.querySelector('[class*="title"]')?.textContent?.trim();
-            if (!propName) return;
-            
-            const variantGroup = { name: propName, options: [] };
-            
-            group.querySelectorAll('[class*="option"], button').forEach(option => {
-                const label = option.textContent?.trim() || option.getAttribute('title') || '';
-                if (label) {
-                    const optionObj = { label };
-                    const img = option.querySelector('img');
-                    if (img) {
-                        const src = img.src || img.getAttribute('data-src') || '';
-                        if (isProductImage(src, img)) {
-                            optionObj.image = convertToOriginalImage(src);
-                        }
-                    }
-                    variantGroup.options.push(optionObj);
-                }
-            });
-            
-            if (variantGroup.options.length > 0) {
-                product.variants.push(variantGroup);
-            }
-        });
-    }
-    
-    // 1688 采集
     function collect1688(product) {
         const titleEl = document.querySelector('h1');
         if (titleEl) product.title = titleEl.textContent.trim();
@@ -568,13 +484,11 @@ export const tampermonkeyScript = `// ==UserScript==
         const imageSet = new Set();
         document.querySelectorAll('img').forEach(img => {
             const src = img.src || img.getAttribute('data-src');
-            if (isProductImage(src, img)) {
-                imageSet.add(convertToOriginalImage(src));
-            }
+            if (isProductImage(src, img)) imageSet.add(convertToOriginalImage(src));
         });
         product.images = Array.from(imageSet).slice(0, 20);
         
-        const match = window.location.href.match(/offer\\/(\\d+)/);
+        const match = window.location.href.match(/offer\/(\d+)/);
         if (match) product.itemId = match[1];
         
         const shopEl = document.querySelector('[class*="company-name"]');
@@ -586,7 +500,7 @@ export const tampermonkeyScript = `// ==UserScript==
         overlay.id = 'config-overlay';
         const panel = document.createElement('div');
         panel.id = 'config-panel';
-        panel.innerHTML = \`
+        panel.innerHTML = `
             <div class="config-title">⚙️ 采集器配置</div>
             <div class="config-field">
                 <label class="config-label">ERP 接口地址</label>
@@ -600,7 +514,7 @@ export const tampermonkeyScript = `// ==UserScript==
                 <button class="config-btn config-btn-cancel" id="config-cancel">取消</button>
                 <button class="config-btn config-btn-save" id="config-save">保存配置</button>
             </div>
-        \`;
+        `;
         document.body.appendChild(overlay);
         document.body.appendChild(panel);
         
@@ -632,7 +546,7 @@ export const tampermonkeyScript = `// ==UserScript==
         
         const btn = document.createElement('button');
         btn.textContent = '🔗 采集全部信息';
-        btn.style.cssText = \`position:fixed!important;top:150px!important;right:30px!important;padding:20px 30px!important;background:linear-gradient(135deg,#ff6600,#ff8800)!important;color:white!important;border:3px solid white!important;border-radius:12px!important;font-size:18px!important;font-weight:bold!important;cursor:pointer!important;z-index:999999999!important;box-shadow:0 8px 24px rgba(255,102,0,0.4)!important;\`;
+        btn.style.cssText = 'position:fixed!important;top:150px!important;right:30px!important;padding:20px 30px!important;background:linear-gradient(135deg,#ff6600,#ff8800)!important;color:white!important;border:3px solid white!important;border-radius:12px!important;font-size:18px!important;font-weight:bold!important;cursor:pointer!important;z-index:999999999!important;box-shadow:0 8px 24px rgba(255,102,0,0.4)!important;';
         
         btn.onclick = async function() {
             const originalText = btn.textContent;
@@ -644,7 +558,6 @@ export const tampermonkeyScript = `// ==UserScript==
             
             try {
                 product = collectProduct();
-                
                 console.log('📦 完整数据：', product);
                 
                 btn.textContent = '⏳ 推送中...';
@@ -653,7 +566,7 @@ export const tampermonkeyScript = `// ==UserScript==
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': \`Bearer \${config.erpToken}\`
+                        'Authorization': 'Bearer ' + config.erpToken
                     },
                     body: JSON.stringify(product)
                 });
@@ -668,19 +581,10 @@ export const tampermonkeyScript = `// ==UserScript==
                     btn.textContent = '✓ 成功';
                     btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
                     
-                    alert(\`✓ 采集成功！\\n\\n\` +
-                          \`评分：\${product.rating}\\n\` +
-                          \`销量：\${product.soldCount}\\n\` +
-                          \`规格：\${Object.keys(product.specifications).length} 项\\n\` +
-                          \`variants：\${product.variants.length} 组\\n\` +
-                          \`SKU ID：\${product.skuId || '无'}\\n\` +
-                          \`图片：\${product.images.length} 张\\n\\n\` +
-                          \`已保存到 ERP\`);
-                    
+                    alert('✓ 采集成功！\n\n评分：' + product.rating + '\n销量：' + product.soldCount + '\n规格：' + Object.keys(product.specifications).length + ' 项\nvariants：' + product.variants.length + ' 组\nSKU ID：' + (product.skuId || '无') + '\n图片：' + product.images.length + ' 张\n\n已保存到 ERP');
                 } else {
-                    throw new Error(result.message || \`HTTP \${response.status}\`);
+                    throw new Error(result.message || 'HTTP ' + response.status);
                 }
-                
             } catch (error) {
                 console.error('❌ 错误：', error);
                 
@@ -692,7 +596,7 @@ export const tampermonkeyScript = `// ==UserScript==
                 
                 btn.textContent = '❌ 失败';
                 btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
-                alert(\`❌ 失败：\${error.message}\`);
+                alert('❌ 失败：' + error.message);
             }
             
             setTimeout(() => {
@@ -707,7 +611,7 @@ export const tampermonkeyScript = `// ==UserScript==
         
         const settingsBtn = document.createElement('button');
         settingsBtn.textContent = '⚙️ 设置';
-        settingsBtn.style.cssText = \`position:fixed!important;top:240px!important;right:30px!important;padding:15px 25px!important;background:linear-gradient(135deg,#6366f1,#8b5cf6)!important;color:white!important;border:3px solid white!important;border-radius:12px!important;font-size:16px!important;font-weight:bold!important;cursor:pointer!important;z-index:999999999!important;\`;
+        settingsBtn.style.cssText = 'position:fixed!important;top:240px!important;right:30px!important;padding:15px 25px!important;background:linear-gradient(135deg,#6366f1,#8b5cf6)!important;color:white!important;border:3px solid white!important;border-radius:12px!important;font-size:16px!important;font-weight:bold!important;cursor:pointer!important;z-index:999999999!important;';
         settingsBtn.onclick = showConfigPanel;
         document.body.appendChild(settingsBtn);
         
@@ -721,4 +625,4 @@ export const tampermonkeyScript = `// ==UserScript==
     } else {
         window.addEventListener('load', () => setTimeout(init, 1000));
     }
-})();`;
+})();
