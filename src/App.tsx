@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Link, Download, Code, Trash2, Copy, ExternalLink, FileSpreadsheet, Search, ShoppingBag, CheckCircle, AlertCircle, Server, Zap, Eye } from 'lucide-react';
+import { Link, Download, Code, Trash2, Copy, ExternalLink, FileSpreadsheet, Search, ShoppingBag, CheckCircle, AlertCircle, Server, Zap, Eye, Info } from 'lucide-react';
 import { parseProductUrl, exportToCSV, ProductInfo } from './utils/linkParser';
 import { extensionFiles } from './utils/extensionCode';
 import { getERPConfigs, pushToERP } from './utils/erpConnector';
+import { tampermonkeyScript } from './utils/tampermonkeyScript';
 import ERPPanel from './components/ERPPanel';
 import ERPWizard from './components/ERPWizard';
 import DoubaoERPGuide from './components/DoubaoERPGuide';
@@ -10,7 +11,7 @@ import ProductDetail from './components/ProductDetail';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
-type TabType = 'collector' | 'results' | 'extension' | 'erp' | 'import';
+type TabType = 'collector' | 'results' | 'extension' | 'erp' | 'import' | 'tampermonkey';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('collector');
@@ -373,6 +374,17 @@ function App() {
           >
             <Download size={16} />
             从油猴导入
+          </button>
+          <button
+            onClick={() => setActiveTab('tampermonkey')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'tampermonkey'
+                ? 'bg-white text-orange-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            <Code size={16} />
+            油猴脚本
           </button>
         </div>
       </div>
@@ -1197,6 +1209,156 @@ window.exportProducts = function() {
                   <p className="text-xs text-gray-500">联系你的 ERP 开发人员，获取 API 文档和接口地址</p>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tampermonkey Script Tab */}
+        {activeTab === 'tampermonkey' && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl p-6 text-white">
+              <h2 className="text-xl font-bold mb-2">🐒 油猴采集脚本（最新版）</h2>
+              <p className="text-orange-100 text-sm">
+                一键复制脚本代码，安装到 Tampermonkey 即可使用。支持 Lazada/Shopee/1688 全平台采集。
+              </p>
+            </div>
+
+            {/* Installation Guide */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">📦 安装步骤</h3>
+              <div className="space-y-3">
+                {[
+                  { step: 1, title: '安装 Tampermonkey', desc: '在 Chrome 应用店搜索 "Tampermonkey" 并安装' },
+                  { step: 2, title: '复制脚本代码', desc: '点击下方"一键复制脚本"按钮' },
+                  { step: 3, title: '创建新脚本', desc: '点击 Tampermonkey 图标 → 创建新脚本' },
+                  { step: 4, title: '粘贴代码', desc: '删除默认代码，粘贴复制的脚本代码' },
+                  { step: 5, title: '保存', desc: '按 Ctrl+S 保存脚本' },
+                  { step: 6, title: '开始使用', desc: '打开 Lazada/Shopee 商品页，点击橙色采集按钮' },
+                ].map(item => (
+                  <div key={item.step} className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                      {item.step}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800 text-sm">{item.title}</p>
+                      <p className="text-gray-500 text-xs mt-0.5">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Script Code with Copy Button */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">📝 脚本代码（v9.0 定制版）</h3>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(tampermonkeyScript);
+                    showNotification('success', '✓ 脚本已复制！请粘贴到 Tampermonkey');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg font-medium hover:from-orange-600 hover:to-red-600 transition-all shadow-lg shadow-orange-200"
+                >
+                  <Copy size={16} />
+                  一键复制脚本
+                </button>
+              </div>
+              
+              <div className="bg-gray-900 rounded-xl p-4 overflow-x-auto max-h-96 overflow-y-auto">
+                <pre className="text-xs text-gray-300 font-mono whitespace-pre">
+                  {tampermonkeyScript}
+                </pre>
+              </div>
+
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-xs text-blue-700 flex items-start gap-2">
+                  <Info size={14} className="flex-shrink-0 mt-0.5" />
+                  <span>
+                    <strong>功能说明：</strong>采集标题、描述、高清图片、价格、规格参数、SKU变体（颜色/尺寸等）、评分、销量等完整信息，自动推送到 ERP。
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {/* Features */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span className="text-lg">✅</span> 采集内容
+                </h4>
+                <ul className="space-y-2 text-sm text-gray-600">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle size={14} className="text-green-500" />
+                    商品标题、描述（过滤页脚）
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle size={14} className="text-green-500" />
+                    高清原图（自动转换）
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle size={14} className="text-green-500" />
+                    价格、原价
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle size={14} className="text-green-500" />
+                    完整规格参数（Specifications）
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle size={14} className="text-green-500" />
+                    SKU变体（颜色、尺寸等）
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle size={14} className="text-green-500" />
+                    评分、销量、完整SKU ID
+                  </li>
+                </ul>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span className="text-lg">🌐</span> 支持平台
+                </h4>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium text-orange-600 mb-1">Lazada（6个站点）</p>
+                    <div className="flex flex-wrap gap-1">
+                      {['SG', 'MY', 'TH', 'VN', 'PH', 'ID'].map(s => (
+                        <span key={s} className="px-2 py-0.5 bg-orange-50 text-orange-600 rounded text-xs">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-blue-600 mb-1">Shopee（8个站点）</p>
+                    <div className="flex flex-wrap gap-1">
+                      {['SG', 'MY', 'TH', 'VN', 'PH', 'ID', 'TW', 'BR'].map(s => (
+                        <span key={s} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-red-600 mb-1">1688</p>
+                    <div className="flex flex-wrap gap-1">
+                      <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs">中国站</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ERP Config */}
+            <div className="bg-green-50 rounded-2xl border border-green-200 p-5">
+              <h4 className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                <Server size={16} className="text-green-600" />
+                ERP 配置（已内置）
+              </h4>
+              <div className="text-sm text-green-800 space-y-1">
+                <p><strong>接口地址：</strong>https://erp.zancuren.com/api/products/collect</p>
+                <p><strong>认证方式：</strong>Bearer Token</p>
+                <p><strong>Token：</strong>11a95ccfc9050ba877815d125585d502</p>
+              </div>
+              <p className="text-xs text-green-700 mt-2">
+                💡 如果需要修改 ERP 配置，点击页面上的"⚙️ 设置"按钮即可
+              </p>
             </div>
           </div>
         )}
