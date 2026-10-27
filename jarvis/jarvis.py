@@ -400,9 +400,15 @@ def handle(text):
         try:
             reply = chat(text)
         except Exception as e:
-            busy_err = "429" in repr(e) or "RateLimit" in repr(e)
-            reply = (f"抱歉{CFG['call_user']}，免费 AI 现在太忙，请过几秒再说一遍。" if busy_err
-                     else f"抱歉{CFG['call_user']}，连接 AI 失败了，请检查网络或 API Key。")
+            er = repr(e)
+            if "401" in er or "Authentication" in er:
+                reply = f"{CFG['call_user']}，API Key 不对或者已经被删了。右键点我，选“更换 API Key”，重新粘贴一个。"
+            elif "429" in er or "RateLimit" in er:
+                reply = f"抱歉{CFG['call_user']}，免费 AI 现在太忙，请过几秒再说一遍。"
+            elif "Connection" in er or "Timeout" in er:
+                reply = f"抱歉{CFG['call_user']}，连不上 AI 服务器，检查一下网络或者代理。"
+            else:
+                reply = f"抱歉{CFG['call_user']}，AI 出错了：{er[:60]}"
             log("系统", repr(e))
         speak(reply)
 
@@ -442,6 +448,7 @@ class Buddy:
         self.c.bind("<Button-3>", self._menu)
         self.m = tk.Menu(r, tearoff=0, font=self.font)
         self.m.add_command(label="⌨  打字跟小李说", command=self.type_box)
+        self.m.add_command(label="🔑  更换 API Key", command=self.change_key)
         self.m.add_command(label="🙈  隐藏 10 分钟", command=lambda: (r.withdraw(), r.after(600000, r.deiconify)))
         self.m.add_separator()
         self.m.add_command(label="❌  退出小李", command=lambda: os._exit(0))
@@ -458,6 +465,20 @@ class Buddy:
         if t and t.strip():
             log("你", t.strip())
             threading.Thread(target=handle, args=(t.strip(),), daemon=True).start()
+
+    def change_key(self):
+        from tkinter import simpledialog
+        k = simpledialog.askstring("更换 API Key", "粘贴新的 API Key（智谱或 DeepSeek）：", parent=self.root)
+        if not k or not k.strip(): return
+        k = k.strip()
+        CFG["api_key"] = k
+        if k.startswith("sk-"):
+            CFG["base_url"], CFG["model"] = "https://api.deepseek.com", "deepseek-flash"
+        else:
+            CFG["base_url"], CFG["model"] = "https://open.bigmodel.cn/api/paas/v4/", "glm-4.7-flash"
+        with open(CFG_PATH, "w", encoding="utf-8") as f:
+            json.dump(CFG, f, ensure_ascii=False, indent=2)
+        log("小李", f"新 Key 已保存，{CFG['call_user']}，再跟我说一遍吧。")
 
     # ---- 画小人（小新风格：土豆脸、粗眉毛、红上衣、黄短裤）----
     def draw_kid(self, st, now):
