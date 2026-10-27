@@ -18,7 +18,7 @@ jobs:
           pip install -r jarvis/requirements.txt pyinstaller
       - name: Build exe
         working-directory: jarvis
-        run: pyinstaller --noconfirm --onedir --console --name JARVIS --collect-all vosk --collect-all edge_tts --collect-data pypinyin --collect-all pyttsx3 --hidden-import pyttsx3.drivers.sapi5 --hidden-import comtypes.stream jarvis.py
+        run: pyinstaller --noconfirm --onedir --windowed --name JARVIS --collect-all vosk --collect-all edge_tts --collect-data pypinyin --collect-all pyttsx3 --hidden-import pyttsx3.drivers.sapi5 --hidden-import comtypes.stream jarvis.py
       - name: Add voice model
         working-directory: jarvis
         shell: pwsh
