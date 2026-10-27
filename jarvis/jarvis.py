@@ -341,11 +341,67 @@ def miaoshou(link=""):
     return "已打开妙手ERP" + ("，商品链接已复制，到采集框里 Ctrl+V 就能采集上架" if link else "")
 
 # ---------------- 看屏幕自己动手（视觉模型） ----------------
+BROWSER_TITLES = ("Google Chrome", "Microsoft Edge", "Chrome", "Edge", "联想浏览器", "Firefox", "360")
+def _fg_title():
+    try:
+        import ctypes
+        u = ctypes.windll.user32; h = u.GetForegroundWindow()
+        n = u.GetWindowTextLengthW(h); b = ctypes.create_unicode_buffer(n + 1); u.GetWindowTextW(h, b, n + 1)
+        return b.value
+    except Exception:
+        return ""
+
+def _focus_browser():
+    """用户已经开着的浏览器：前台就是浏览器就不动，否则把最近的浏览器窗口调到前台"""
+    if any(w.lower() in _fg_title().lower() for w in BROWSER_TITLES):
+        return True
+    ok = _focus_title(*BROWSER_TITLES)
+    if ok: time.sleep(0.3)
+    return ok
+
+BROWSER_KEYS = [
+    (r"^(新建|新开|打开)?(一个)?新?标签页?$|^新标签", ("ctrl", "t")),
+    (r"关(掉|闭)(这个|当前)?(标签|页面|网页)", ("ctrl", "w")),
+    (r"^(刷新|重新加载)", ("f5",)),
+    (r"^(后退|返回上一页|上一页|返回)$", ("alt", "left")),
+    (r"^(前进|下一页)$", ("alt", "right")),
+    (r"下一个标签|切到下一个", ("ctrl", "tab")),
+    (r"上一个标签|切到上一个", ("ctrl", "shift", "tab")),
+    (r"^(放大)(页面|网页)?$", ("ctrl", "=")),
+    (r"^(缩小)(页面|网页)?$", ("ctrl", "-")),
+    (r"^(全屏|退出全屏)$", ("f11",)),
+    (r"回到顶部|到顶部", ("home",)),
+    (r"到底部|拉到底", ("end",)),
+    (r"恢复(刚才|关掉的)?(标签|页面)", ("ctrl", "shift", "t")),
+]
+def browser_fast(t):
+    """在用户已经开着的浏览器上直接按快捷键，不调 AI，零延迟"""
+    import pyautogui, pyperclip
+    m = re.match(r"^(?:在|用)?(?:这个)?(?:浏览器|网页)?(?:里|上)?(?:帮我)?(?:搜索|搜一下|搜|百度一下|查一下)[：:，, ]?(.+)$", t)
+    if m:
+        if not _focus_browser(): return None
+        pyautogui.hotkey("ctrl", "l"); pyperclip.copy(m.group(1)); pyautogui.hotkey("ctrl", "v"); pyautogui.press("enter")
+        return f"在浏览器搜：{m.group(1)}"
+    m = re.match(r"^(?:在浏览器里?)?(?:打开|去|进入?)(?:网址|网站)?[：: ]?((?:https?://)?[\w.-]+\.(?:com|cn|net|org|top|io|co|br|mx|pk|ru|ro|kr|jp)\S*)$", t, re.I)
+    if m:
+        if not _focus_browser(): return None
+        pyautogui.hotkey("ctrl", "l"); pyperclip.copy(m.group(1)); pyautogui.hotkey("ctrl", "v"); pyautogui.press("enter")
+        return f"已打开 {m.group(1)}"
+    if re.search(r"往下(翻|滑|拉)|下滑|向下滚", t):
+        _focus_browser() or True; pyautogui.scroll(-800); return "往下翻了"
+    if re.search(r"往上(翻|滑|拉)|上滑|向上滚", t):
+        _focus_browser() or True; pyautogui.scroll(800); return "往上翻了"
+    for pat, keys in BROWSER_KEYS:
+        if re.search(pat, t):
+            if not _focus_browser(): return None
+            pyautogui.hotkey(*keys); return "好了"
+    return None
+
 def _shot_b64():
     import pyautogui, io, base64
     im = pyautogui.screenshot()
     W, H = im.size
-    im.thumbnail((1280, 1280))
+    im.thumbnail((1024, 1024))
     buf = io.BytesIO(); im.convert("RGB").save(buf, "JPEG", quality=70)
     return base64.b64encode(buf.getvalue()).decode(), W, H
 
@@ -356,9 +412,11 @@ def screen_task(goal):
     if "bigmodel" not in CFG["base_url"]:
         return "看屏幕操作需要智谱的 Key（它有免费视觉模型）"
     client = OpenAI(api_key=CFG["api_key"], base_url=CFG["base_url"])
+    if re.search(r"浏览器|网页|网站|页面|标签|店铺|后台|美客多|亚马逊|ozon|emag|daraz", goal, re.I):
+        _focus_browser()
     done_steps = []
     prompt = ("你在操作一台 Windows 电脑，目标：{goal}\n已做过：{steps}\n"
-              "看截图，只输出下一步的一行 JSON，不要别的文字。坐标用 0-1000 的比例（左上角 0,0，右下角 1000,1000）。可选："
+              "屏幕上已经打开的窗口/浏览器就是用户说的“这个”，直接在上面操作，不要另开新浏览器。看截图，只输出下一步的一行 JSON，不要别的文字。坐标用 0-1000 的比例（左上角 0,0，右下角 1000,1000）。可选："
               '{{"a":"click","x":数,"y":数}} 单击；{{"a":"double","x":数,"y":数}} 双击；{{"a":"right","x":数,"y":数}} 右键；'
               '{{"a":"type","text":"文字"}} 在当前位置输入；{{"a":"key","keys":"ctrl+c"}} 按键；{{"a":"scroll","n":-5}} 滚动；'
               '{{"a":"wait"}} 等加载；{{"a":"done","say":"一句话汇报"}} 完成或做不到。')
@@ -368,7 +426,7 @@ def screen_task(goal):
             {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}},
             {"type": "text", "text": prompt.format(goal=goal, steps="；".join(done_steps[-8:]) or "无")}]}]
         out = None
-        for m in ("glm-4.1v-thinking-flash", "glm-4v-flash"):
+        for m in ("glm-4v-flash", "glm-4.1v-thinking-flash"):   # 先用快的，不行再用慢的思考模型
             try:
                 r = client.chat.completions.create(model=m, messages=msgs, temperature=0.2)
                 out = r.choices[0].message.content or ""; break
@@ -396,7 +454,7 @@ def screen_task(goal):
         elif a == "wait": time.sleep(2)
         done_steps.append(json.dumps(act, ensure_ascii=False))
         log("执行", done_steps[-1])
-        time.sleep(1.2)
+        time.sleep(0.5 if a in ("type", "key", "scroll") else 0.9)
     return "步骤太多了，我先做到这里，您看一下屏幕"
 
 def screenshot():
@@ -451,7 +509,7 @@ SYSTEM = (f"你叫零八（写作08，也可以叫你贾维斯），用户的私
 try:
     _desk = sorted({os.path.splitext(f)[0] for f in os.listdir(DESKTOP) if not BAD_LNK.search(f)})[:80]
     SYSTEM += ("用户桌面上的东西（打开时把名字原样传给 open_app，比如店铺名的 Chrome 快捷方式“美客多”“Ozon”“eMAG”就是各自店铺后台的浏览器）："
-               + "、".join(_desk) + "。已经开着的软件 open_app 只会把窗口调出来，不会重启。")
+               + "、".join(_desk) + "。已经开着的软件 open_app 只会把窗口调出来，不会重启。用户说“在这个浏览器上/网页上帮我…”时，就是在他已经打开的浏览器上用 screen_task 操作，不要重新打开浏览器或软件。")
 except Exception:
     pass
 history = [{"role": "system", "content": SYSTEM}]
@@ -490,6 +548,8 @@ QUICK_TOOLS = {"send_qq", "douyin_dm", "open_app", "open_url", "web_search", "do
 def fast_path(t):
     """常用指令本地直接执行，不用等 AI"""
     t = t.strip("，。！？,.!? ")
+    r = browser_fast(t)
+    if r: return r
     m = re.match(r"^(?:帮我)?(?:在抖音上?)?给(.{1,12}?)发(?:个|条)?抖音私信(?:说)?[，,：:]?(.+)$", t) or re.match(r"^(?:帮我)?抖音私信(.{1,12}?)(?:说)[，,：:]?(.+)$", t)
     if m: return douyin_dm(m.group(1), m.group(2))
     m = re.match(r"^(?:帮我)?(?:在QQ上?)?给(.{1,12}?)发(?:个|条)?(?:QQ|qq)(?:消息)?(?:说)?[，,：:]?(.+)$", t)
