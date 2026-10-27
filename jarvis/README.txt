@@ -3,7 +3,10 @@ J.A.R.V.I.S. 本地语音助手（Windows）
 【第一次使用】
 1. 把压缩包全部解压（不要在压缩包里直接双击）
 2. 双击 JARVIS.exe（Windows 提示“已保护你的电脑”时，点“更多信息”→“仍要运行”）
-3. 第一次会让你粘贴 DeepSeek API Key（https://platform.deepseek.com/api_keys 申请），回车后自动保存
+3. 第一次会让你粘贴 API Key，回车后自动保存：
+   - 免费：智谱 GLM，去 https://bigmodel.cn 注册，在“API Keys”里创建
+   - 付费更聪明：DeepSeek，https://platform.deepseek.com/api_keys （sk- 开头，充几块钱能用很久）
+   想换 Key：删掉 config.json 再打开
 4. 允许麦克风，听到“我在”就可以说话了
 
 【怎么用】
