@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-小李 本地语音助手（Windows）
-唤醒词：小李 / 贾维斯   大脑：DeepSeek   语音识别：Vosk 离线中文   语音合成：edge-tts（失败时用系统语音）
+08 本地语音助手（Windows）
+唤醒词：08 / 贾维斯   大脑：DeepSeek   语音识别：Vosk 离线中文   语音合成：edge-tts（失败时用系统语音）
 """
 import os, sys, json, time, queue, threading, subprocess, webbrowser, shutil, datetime, asyncio, tempfile, re, glob
 
@@ -21,7 +21,7 @@ NOWIN = 0x08000000 if os.name == "nt" else 0
 # ---------------- 配置 ----------------
 def load_cfg():
     cfg = {"api_key": "", "model": "deepseek-flash", "base_url": "https://api.deepseek.com",
-           "voice": "zh-CN-YunxiNeural", "wake_words": ["xiao li", "jia wei si"], "awake_seconds": 10, "call_user": "傅总"}
+           "voice": "zh-CN-YunxiNeural", "wake_words": ["ling ba", "jia wei si"], "awake_seconds": 10, "call_user": "傅总"}
     if os.path.exists(CFG_PATH):
         with open(CFG_PATH, "r", encoding="utf-8") as f:
             cfg.update(json.load(f))
@@ -44,7 +44,7 @@ def ask_key():
     import tkinter as tk
     from tkinter import simpledialog
     r = tk.Tk(); r.withdraw()
-    k = simpledialog.askstring("小李 第一次使用",
+    k = simpledialog.askstring("08 第一次使用",
         "粘贴 AI 的 API Key，点确定。\n\n免费：智谱 GLM（bigmodel.cn → API Key 里创建）\n付费更聪明：DeepSeek（sk- 开头）\n\nKey 只保存在你自己电脑的 config.json 里。", parent=r)
     r.destroy()
     return (k or "").strip()
@@ -59,7 +59,7 @@ def log(who, msg):
     try:
         with open(os.path.join(BASE, "jarvis.log"), "a", encoding="utf-8") as f: f.write(line + "\n")
     except Exception: pass
-    if who in ("你", "小李"):
+    if who in ("你", "08"):
         UI["bubble"] = (who, msg); UI["bubble_t"] = time.time()
 
 # 界面状态（给卡通小人用）：idle 待机 / listen 在听 / think 思考 / talk 说话
@@ -70,7 +70,7 @@ speaking = threading.Event()
 def speak(text):
     if not text:
         return
-    log("小李", text)
+    log("08", text)
     speaking.set(); UI["state"] = "talk"
     try:
         try:
@@ -283,6 +283,65 @@ def miaoshou(link=""):
     webbrowser.open("https://erp.91miaoshou.com/")
     return "已打开妙手ERP" + ("，商品链接已复制，到采集框里 Ctrl+V 就能采集上架" if link else "")
 
+# ---------------- 看屏幕自己动手（视觉模型） ----------------
+def _shot_b64():
+    import pyautogui, io, base64
+    im = pyautogui.screenshot()
+    W, H = im.size
+    im.thumbnail((1280, 1280))
+    buf = io.BytesIO(); im.convert("RGB").save(buf, "JPEG", quality=70)
+    return base64.b64encode(buf.getvalue()).decode(), W, H
+
+def screen_task(goal):
+    """截图→视觉模型决定点哪里/打什么字→执行，循环直到完成"""
+    import pyautogui, pyperclip
+    from openai import OpenAI
+    if "bigmodel" not in CFG["base_url"]:
+        return "看屏幕操作需要智谱的 Key（它有免费视觉模型）"
+    client = OpenAI(api_key=CFG["api_key"], base_url=CFG["base_url"])
+    done_steps = []
+    prompt = ("你在操作一台 Windows 电脑，目标：{goal}\n已做过：{steps}\n"
+              "看截图，只输出下一步的一行 JSON，不要别的文字。坐标用 0-1000 的比例（左上角 0,0，右下角 1000,1000）。可选："
+              '{{"a":"click","x":数,"y":数}} 单击；{{"a":"double","x":数,"y":数}} 双击；{{"a":"right","x":数,"y":数}} 右键；'
+              '{{"a":"type","text":"文字"}} 在当前位置输入；{{"a":"key","keys":"ctrl+c"}} 按键；{{"a":"scroll","n":-5}} 滚动；'
+              '{{"a":"wait"}} 等加载；{{"a":"done","say":"一句话汇报"}} 完成或做不到。')
+    for step in range(15):
+        b64, W, H = _shot_b64()
+        msgs = [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}},
+            {"type": "text", "text": prompt.format(goal=goal, steps="；".join(done_steps[-8:]) or "无")}]}]
+        out = None
+        for m in ("glm-4.1v-thinking-flash", "glm-4v-flash"):
+            try:
+                r = client.chat.completions.create(model=m, messages=msgs, temperature=0.2)
+                out = r.choices[0].message.content or ""; break
+            except Exception as e:
+                log("系统", f"视觉模型 {m}: {e!r}"[:200]); time.sleep(1)
+        if out is None:
+            return "看屏幕的模型现在用不了，稍后再试"
+        mm = re.findall(r"\{[^{}]*\}", out)
+        if not mm:
+            done_steps.append("（输出无效）"); continue
+        try: act = json.loads(mm[-1])
+        except Exception: done_steps.append("（输出无效）"); continue
+        a = act.get("a")
+        X = lambda: int(float(act.get("x", 500)) / 1000 * W)
+        Y = lambda: int(float(act.get("y", 500)) / 1000 * H)
+        UI["state"] = "think"
+        if a == "done":
+            return act.get("say", "做完了")
+        elif a == "click": pyautogui.click(X(), Y())
+        elif a == "double": pyautogui.doubleClick(X(), Y())
+        elif a == "right": pyautogui.rightClick(X(), Y())
+        elif a == "type": pyperclip.copy(act.get("text", "")); pyautogui.hotkey("ctrl", "v")
+        elif a == "key": pyautogui.hotkey(*[k.strip().lower() for k in str(act.get("keys", "")).split("+") if k.strip()])
+        elif a == "scroll": pyautogui.scroll(int(act.get("n", -5)) * 100)
+        elif a == "wait": time.sleep(2)
+        done_steps.append(json.dumps(act, ensure_ascii=False))
+        log("执行", done_steps[-1])
+        time.sleep(1.2)
+    return "步骤太多了，我先做到这里，您看一下屏幕"
+
 def screenshot():
     import pyautogui
     p = os.path.join(DESKTOP, f"截图_{datetime.datetime.now():%Y%m%d_%H%M%S}.png")
@@ -294,7 +353,7 @@ def lock_screen():
 def now_time():
     return datetime.datetime.now().strftime("现在是 %Y年%m月%d日 %H:%M，星期") + "一二三四五六日"[datetime.datetime.now().weekday()]
 
-TOOLS_IMPL = {f.__name__: f for f in [send_wechat, douyin_live, miaoshou, open_app, open_url, web_search, list_desktop, organize_desktop, undo_organize,
+TOOLS_IMPL = {f.__name__: f for f in [screen_task, send_wechat, douyin_live, miaoshou, open_app, open_url, web_search, list_desktop, organize_desktop, undo_organize,
               find_file, open_path, create_note, type_text, press_keys, volume, media, screenshot, lock_screen, now_time]}
 
 def T(name, desc, props=None, req=None):
@@ -302,6 +361,7 @@ def T(name, desc, props=None, req=None):
             "parameters": {"type": "object", "properties": props or {}, "required": req or []}}}
 S = lambda d: {"type": "string", "description": d}
 TOOLS = [
+    T("screen_task", "看着屏幕自己用鼠标键盘完成任务（点按钮、填表、在网页或软件里一步步操作，其他工具做不了时用它）", {"goal": S("要完成的具体任务，写清楚")}, ["goal"]),
     T("send_wechat", "用电脑微信给某个联系人或群发一条消息", {"contact": S("联系人备注名或群名"), "message": S("要发的内容")}, ["contact", "message"]),
     T("douyin_live", "打开抖音看直播，可带主播名或关键词", {"keyword": S("主播名或直播关键词，可留空")}),
     T("miaoshou", "打开妙手ERP（店铺上架/采集商品/看订单）", {"link": S("要采集上架的商品链接，可留空")}),
@@ -323,9 +383,10 @@ TOOLS = [
     T("now_time", "查询当前日期时间"),
 ]
 
-SYSTEM = (f"你叫小李（也可以叫你贾维斯），用户的私人 AI 管家，运行在用户的 Windows 电脑上。称呼用户为“{CFG['call_user']}”。"
+SYSTEM = (f"你叫零八（写作08，也可以叫你贾维斯），用户的私人 AI 管家，运行在用户的 Windows 电脑上。称呼用户为“{CFG['call_user']}”。"
           f"回答用简短口语化中文，一般不超过两句话，因为会被朗读出来；不要用 Markdown、列表或表情。"
-          f"需要操作电脑时直接调用工具，做完用一句话汇报结果。用户桌面路径：{DESKTOP}。"
+          f"需要操作电脑时直接调用工具，做完用一句话汇报结果。发微信用 send_wechat，看抖音直播用 douyin_live，妙手上架用 miaoshou；专用工具做不到的界面操作（点按钮、填表、在软件或网页里一步步做）用 screen_task。"
+          f"用户桌面路径：{DESKTOP}。"
           f"删除文件、关机等危险操作你没有权限，礼貌说明即可。")
 
 history = [{"role": "system", "content": SYSTEM}]
@@ -379,26 +440,26 @@ def chat(user_text):
 
 # ---------------- 唤醒词 ----------------
 from pypinyin import lazy_pinyin
-WAKE = [w.replace(" ", "") for w in CFG["wake_words"]]
+WAKE = [w.replace(" ", "") for w in CFG["wake_words"]] + ["lingba"]
 def split_wake(text):
-    """返回 (是否唤醒, 唤醒词之后的内容)。唤醒词：小李（主）、贾维斯（备用）"""
+    """返回 (是否唤醒, 唤醒词之后的内容)。唤醒词：08（主）、贾维斯（备用）"""
     t = re.sub(r"\s+", "", text)
     py = lazy_pinyin(t)  # 每个汉字一个音节
     joined = ""; idx = []
     for i, p in enumerate(py):
         idx.append(len(joined)); joined += p
     best = None
-    for w in WAKE + ["xiaoli", "xiaoni", "xiaodi", "xiaoyi", "xiaoqi", "xiaoliu", "xiaolin", "xiaoling", "shaoli", "xiaole", "jiaweisi", "jiaweishi", "jiaweis", "jiawisi", "jiawei"]:
+    for w in WAKE + ["lingba", "linba", "lingpa", "dongba", "0ba", "08", "ling8", "liangba", "jiaweisi", "jiaweishi", "jiaweis", "jiawisi", "jiawei"]:
         pos = joined.find(w)
         if pos >= 0 and (best is None or pos < best[0]):
             best = (pos, pos + len(w))
     if best is None or best[0] > len("heiheihei"):   # 名字要在句子开头附近
         return False, ""
     end = best[1]
-    while True:   # 连喊两遍“小李小李”也去掉
-        nxt = joined.find("xiaoli", end)
+    while True:   # 连喊两遍“0808”也去掉
+        nxt = joined.find("lingba", end)
         if nxt != end: break
-        end += len("xiaoli")
+        end += len("lingba")
     k = next((i for i, s in enumerate(idx) if s >= end), len(t))
     return True, t[k:].lstrip("，,。啊呀 ")
 
@@ -408,14 +469,14 @@ def voice_loop():
     from vosk import Model, KaldiRecognizer, SetLogLevel
     SetLogLevel(-1)
     if not os.path.isdir(MODEL_DIR):
-        log("小李", "没找到语音模型 model 文件夹，请把整个文件夹解压完整再打开。"); return
+        log("08", "没找到语音模型 model 文件夹，请把整个文件夹解压完整再打开。"); return
     model = Model(MODEL_DIR)
     rec = KaldiRecognizer(model, 16000)
     q = queue.Queue()
     def cb(indata, frames, t, status):
         if not speaking.is_set():
             q.put(bytes(indata))
-    speak(f"小李已上线，随时为您服务，{CFG['call_user']}。")
+    speak(f"08已上线，随时为您服务，{CFG['call_user']}。")
     awake_until = 0
     with sd.RawInputStream(samplerate=16000, blocksize=8000, dtype="int16", channels=1, callback=cb):
         while True:
@@ -441,8 +502,8 @@ def voice_loop():
                 handle(text); awake_until = time.time() + CFG["awake_seconds"]
                 drain(q, rec)
             else:
-                log("系统", f"（听到：{text}，没叫小李，忽略）")
-                UI["bubble"] = ("听到", f"{text}（先叫“小李”哦）"); UI["bubble_t"] = time.time()
+                log("系统", f"（听到：{text}，没叫08，忽略）")
+                UI["bubble"] = ("听到", f"{text}（先叫“08”哦）"); UI["bubble_t"] = time.time()
 
 def drain(q, rec):
     while not q.empty():
@@ -452,7 +513,7 @@ def drain(q, rec):
 busy = threading.Lock()
 def handle(text):
     with busy:
-        if re.search(r"(退出|关闭)(程序|贾维斯|小李)|再见(贾维斯|小李)", text):
+        if re.search(r"(退出|关闭)(程序|贾维斯|08)|再见(贾维斯|08)", text):
             speak(f"好的{CFG['call_user']}，再见。"); os._exit(0)
         UI["state"] = "think"
         try:
@@ -478,7 +539,7 @@ class Buddy:
         import tkinter as tk
         self.tk = tk
         self.root = r = tk.Tk()
-        r.title("小李"); r.overrideredirect(True); r.attributes("-topmost", True)
+        r.title("08"); r.overrideredirect(True); r.attributes("-topmost", True)
         r.configure(bg=KEY)
         try: r.attributes("-transparentcolor", KEY)
         except Exception: pass
@@ -505,11 +566,11 @@ class Buddy:
         self.c.bind("<Double-Button-1>", lambda e: self.type_box())
         self.c.bind("<Button-3>", self._menu)
         self.m = tk.Menu(r, tearoff=0, font=self.font)
-        self.m.add_command(label="⌨  打字跟小李说", command=self.type_box)
+        self.m.add_command(label="⌨  打字跟08说", command=self.type_box)
         self.m.add_command(label="🔑  更换 API Key", command=self.change_key)
         self.m.add_command(label="🙈  隐藏 10 分钟", command=lambda: (r.withdraw(), r.after(600000, r.deiconify)))
         self.m.add_separator()
-        self.m.add_command(label="❌  退出小李", command=lambda: os._exit(0))
+        self.m.add_command(label="❌  退出08", command=lambda: os._exit(0))
         self.tick()
 
     def _press(self, e): self._dx, self._dy = e.x, e.y
@@ -519,7 +580,7 @@ class Buddy:
 
     def type_box(self):
         from tkinter import simpledialog
-        t = simpledialog.askstring("跟小李说", f"{CFG['call_user']}，想让我做什么？", parent=self.root)
+        t = simpledialog.askstring("跟08说", f"{CFG['call_user']}，想让我做什么？", parent=self.root)
         if t and t.strip():
             log("你", t.strip())
             threading.Thread(target=handle, args=(t.strip(),), daemon=True).start()
@@ -536,7 +597,7 @@ class Buddy:
             CFG["base_url"], CFG["model"] = "https://open.bigmodel.cn/api/paas/v4/", "glm-4.7-flash"
         with open(CFG_PATH, "w", encoding="utf-8") as f:
             json.dump(CFG, f, ensure_ascii=False, indent=2)
-        log("小李", f"新 Key 已保存，{CFG['call_user']}，再跟我说一遍吧。")
+        log("08", f"新 Key 已保存，{CFG['call_user']}，再跟我说一遍吧。")
 
     # ---- 画小人（小新风格：土豆脸、粗眉毛、红上衣、黄短裤）----
     def draw_kid(self, st, now):
@@ -642,7 +703,7 @@ def run_voice():
         log("系统", repr(e))
         msg = str(e)
         UI["state"] = "idle"
-        log("小李", f"{CFG['call_user']}，麦克风打不开（{msg[:40]}）。可以双击我打字。" if "PortAudio" in msg or "device" in msg.lower()
+        log("08", f"{CFG['call_user']}，麦克风打不开（{msg[:40]}）。可以双击我打字。" if "PortAudio" in msg or "device" in msg.lower()
             else f"{CFG['call_user']}，语音出了点问题，可以双击我打字。")
 
 def main():
@@ -656,5 +717,5 @@ if __name__ == "__main__":
     except Exception as e:
         import traceback; traceback.print_exc()
         try:
-            from tkinter import messagebox; messagebox.showerror("小李出错了", repr(e))
+            from tkinter import messagebox; messagebox.showerror("08出错了", repr(e))
         except Exception: pass
