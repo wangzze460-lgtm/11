@@ -17,7 +17,7 @@ UNDO_LOG = os.path.join(BASE, "undo_organize.json")
 # ---------------- 配置 ----------------
 def load_cfg():
     cfg = {"api_key": "", "model": "deepseek-flash", "base_url": "https://api.deepseek.com",
-           "voice": "zh-CN-YunxiNeural", "wake_words": ["jia wei si"], "awake_seconds": 10}
+           "voice": "zh-CN-YunxiNeural", "wake_words": ["jia wei si"], "awake_seconds": 10, "call_user": "傅总"}
     if os.path.exists(CFG_PATH):
         with open(CFG_PATH, "r", encoding="utf-8") as f:
             cfg.update(json.load(f))
@@ -237,7 +237,7 @@ TOOLS = [
     T("now_time", "查询当前日期时间"),
 ]
 
-SYSTEM = (f"你是贾维斯（JARVIS），用户的私人 AI 管家，运行在用户的 Windows 电脑上。称呼用户为“先生”。"
+SYSTEM = (f"你是贾维斯（JARVIS），用户的私人 AI 管家，运行在用户的 Windows 电脑上。称呼用户为“{CFG['call_user']}”。"
           f"回答用简短口语化中文，一般不超过两句话，因为会被朗读出来；不要用 Markdown、列表或表情。"
           f"需要操作电脑时直接调用工具，做完用一句话汇报结果。用户桌面路径：{DESKTOP}。"
           f"删除文件、关机等危险操作你没有权限，礼貌说明即可。")
@@ -270,7 +270,7 @@ def chat(user_text):
             del history[1:len(history) - 30]
             while history[1]["role"] == "tool": del history[1]
         return reply
-    return "这件事步骤太多了，先生，我先做到这里。"
+    return f"这件事步骤太多了，{CFG['call_user']}，我先做到这里。"
 
 # ---------------- 唤醒词 ----------------
 from pypinyin import lazy_pinyin
@@ -305,7 +305,7 @@ def main():
             q.put(bytes(indata))
     print("\n" + "=" * 46 + "\n  J.A.R.V.I.S. 已启动  —— 说「贾维斯」唤醒\n  也可以直接在这个窗口打字回车\n" + "=" * 46 + "\n")
     threading.Thread(target=keyboard_loop, daemon=True).start()
-    speak("贾维斯已上线，随时为您服务，先生。")
+    speak(f"贾维斯已上线，随时为您服务，{CFG['call_user']}。")
     awake_until = 0
     with sd.RawInputStream(samplerate=16000, blocksize=8000, dtype="int16", channels=1, callback=cb):
         while True:
@@ -323,7 +323,7 @@ def main():
                 if rest and len(rest) >= 2:
                     handle(rest); awake_until = time.time() + CFG["awake_seconds"]
                 else:
-                    speak("我在，先生。"); awake_until = time.time() + CFG["awake_seconds"]
+                    speak(f"我在，{CFG['call_user']}。"); awake_until = time.time() + CFG["awake_seconds"]
                 drain(q, rec)
             elif time.time() < awake_until and len(text) >= 2:
                 log("你", text)
@@ -341,11 +341,11 @@ busy = threading.Lock()
 def handle(text):
     with busy:
         if re.search(r"(退出|关闭)(程序|贾维斯)|再见贾维斯", text):
-            speak("好的先生，再见。"); os._exit(0)
+            speak(f"好的{CFG['call_user']}，再见。"); os._exit(0)
         try:
             reply = chat(text)
         except Exception as e:
-            reply = "抱歉先生，连接 DeepSeek 失败了，请检查网络或 API Key。"
+            reply = f"抱歉{CFG['call_user']}，连接 AI 失败了，请检查网络或 API Key。"
             log("系统", repr(e))
         speak(reply)
 
