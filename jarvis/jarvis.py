@@ -233,6 +233,56 @@ def media(action):
     import pyautogui
     pyautogui.press({"play_pause": "playpause", "next": "nexttrack", "prev": "prevtrack"}[action]); return "好的"
 
+def _focus_wechat():
+    """把微信窗口调到前台（先试快捷键 Ctrl+Alt+W，再试打开程序）"""
+    import pyautogui
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW("WeChatMainWndForPC", None) or user32.FindWindowW(None, "微信") or user32.FindWindowW(None, "Weixin")
+        if hwnd:
+            user32.ShowWindow(hwnd, 9); user32.SetForegroundWindow(hwnd); time.sleep(0.6); return True
+    except Exception:
+        pass
+    open_app("微信"); time.sleep(3.5)
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW("WeChatMainWndForPC", None) or user32.FindWindowW(None, "微信") or user32.FindWindowW(None, "Weixin")
+        if hwnd:
+            user32.ShowWindow(hwnd, 9); user32.SetForegroundWindow(hwnd); time.sleep(0.6); return True
+    except Exception:
+        pass
+    pyautogui.hotkey("ctrl", "alt", "w"); time.sleep(1)
+    return True
+
+def send_wechat(contact, message):
+    import pyperclip, pyautogui
+    _focus_wechat()
+    pyautogui.hotkey("ctrl", "f"); time.sleep(0.5)
+    pyperclip.copy(contact); pyautogui.hotkey("ctrl", "v"); time.sleep(1.5)
+    pyautogui.press("enter"); time.sleep(1.0)
+    pyperclip.copy(message); pyautogui.hotkey("ctrl", "v"); time.sleep(0.3)
+    pyautogui.press("enter")
+    return f"已在微信给 {contact} 发送：{message}（如果联系人名字不准，可能发错人，请看一眼）"
+
+def douyin_live(keyword=""):
+    from urllib.parse import quote
+    if keyword:
+        url = "https://www.douyin.com/search/" + quote(keyword) + "?type=live"
+    else:
+        url = "https://live.douyin.com/"
+    lnk = _find_shortcut("抖音") if not keyword else None
+    if lnk:
+        os.startfile(lnk); return "已打开抖音，点上面的“直播”就能看"
+    webbrowser.open(url); return f"已打开抖音直播{('：' + keyword) if keyword else ''}"
+
+def miaoshou(link=""):
+    if link:
+        import pyperclip; pyperclip.copy(link)
+    webbrowser.open("https://erp.91miaoshou.com/")
+    return "已打开妙手ERP" + ("，商品链接已复制，到采集框里 Ctrl+V 就能采集上架" if link else "")
+
 def screenshot():
     import pyautogui
     p = os.path.join(DESKTOP, f"截图_{datetime.datetime.now():%Y%m%d_%H%M%S}.png")
@@ -244,7 +294,7 @@ def lock_screen():
 def now_time():
     return datetime.datetime.now().strftime("现在是 %Y年%m月%d日 %H:%M，星期") + "一二三四五六日"[datetime.datetime.now().weekday()]
 
-TOOLS_IMPL = {f.__name__: f for f in [open_app, open_url, web_search, list_desktop, organize_desktop, undo_organize,
+TOOLS_IMPL = {f.__name__: f for f in [send_wechat, douyin_live, miaoshou, open_app, open_url, web_search, list_desktop, organize_desktop, undo_organize,
               find_file, open_path, create_note, type_text, press_keys, volume, media, screenshot, lock_screen, now_time]}
 
 def T(name, desc, props=None, req=None):
@@ -252,6 +302,9 @@ def T(name, desc, props=None, req=None):
             "parameters": {"type": "object", "properties": props or {}, "required": req or []}}}
 S = lambda d: {"type": "string", "description": d}
 TOOLS = [
+    T("send_wechat", "用电脑微信给某个联系人或群发一条消息", {"contact": S("联系人备注名或群名"), "message": S("要发的内容")}, ["contact", "message"]),
+    T("douyin_live", "打开抖音看直播，可带主播名或关键词", {"keyword": S("主播名或直播关键词，可留空")}),
+    T("miaoshou", "打开妙手ERP（店铺上架/采集商品/看订单）", {"link": S("要采集上架的商品链接，可留空")}),
     T("open_app", "打开电脑上的软件，如微信、记事本、浏览器、QQ音乐、剪映", {"name": S("软件名")}, ["name"]),
     T("open_url", "用浏览器打开网址", {"url": S("网址")}, ["url"]),
     T("web_search", "在网站上搜索", {"query": S("搜索词"), "site": {"type": "string", "enum": ["bing", "baidu", "bilibili", "douyin", "taobao", "youtube"]}}, ["query"]),
