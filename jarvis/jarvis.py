@@ -22,11 +22,19 @@ def load_cfg():
         with open(CFG_PATH, "r", encoding="utf-8") as f:
             cfg.update(json.load(f))
     if not cfg["api_key"]:
-        print("\n第一次使用：请粘贴你的 DeepSeek API Key（在 platform.deepseek.com 申请），回车确认：")
+        print("\n第一次使用：粘贴 AI 的 API Key，回车确认。")
+        print("  免费：智谱 GLM（bigmodel.cn 注册，在 API Keys 里创建）")
+        print("  付费更聪明：DeepSeek（platform.deepseek.com，sk- 开头）")
         cfg["api_key"] = input("> ").strip()
+        if not cfg["api_key"].startswith("sk-"):
+            cfg["base_url"] = "https://open.bigmodel.cn/api/paas/v4/"
+            cfg["model"] = "glm-4.7-flash"
+            print("识别为智谱免费模型 glm-4.7-flash")
+        else:
+            print("识别为 DeepSeek")
         with open(CFG_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
-        print("已保存到 config.json（只存在你自己电脑上）")
+        print("已保存到 config.json（只存在你自己电脑上，想换 Key 就删掉这个文件）")
     return cfg
 
 CFG = load_cfg()
@@ -241,7 +249,8 @@ def chat(user_text):
     client = OpenAI(api_key=CFG["api_key"], base_url=CFG["base_url"])
     history.append({"role": "user", "content": user_text})
     for _ in range(6):
-        resp = client.chat.completions.create(model=CFG["model"], messages=history, tools=TOOLS, temperature=0.6)
+        resp = client.chat.completions.create(model=CFG["model"], messages=history, tools=TOOLS, temperature=0.6,
+                                              extra_body={"thinking": {"type": "disabled"}})
         msg = resp.choices[0].message
         if msg.tool_calls:
             history.append({"role": "assistant", "content": msg.content or "", "tool_calls": [
