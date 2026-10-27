@@ -4,6 +4,7 @@
 唤醒词：08 / 贾维斯   大脑：DeepSeek   语音识别：Vosk 离线中文   语音合成：edge-tts（失败时用系统语音）
 """
 import os, sys, json, time, queue, threading, subprocess, webbrowser, shutil, datetime, asyncio, tempfile, re, glob
+from pypinyin import lazy_pinyin
 
 BASE = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 CFG_PATH = os.path.join(BASE, "config.json")
@@ -63,7 +64,7 @@ def log(who, msg):
         UI["bubble"] = (who, msg); UI["bubble_t"] = time.time()
 
 # 界面状态（给卡通小人用）：idle 待机 / listen 在听 / think 思考 / talk 说话
-UI = {"state": "idle", "bubble": None, "bubble_t": 0, "type_cb": None}
+UI = {"state": "idle", "bubble": None, "bubble_t": 0, "type_cb": None, "fx": None}
 
 # ---------------- 语音合成 ----------------
 speaking = threading.Event()
@@ -135,26 +136,87 @@ def _running(*exes):
     except Exception:
         return False
 
-def _focus_title(*words):
-    """找标题里含关键词的可见/最小化窗口并调到前台"""
+def _force_fg(h):
+    """强制把窗口调到最前面（Windows 默认不让后台程序抢焦点，这里用 Alt 键 + 线程绑定绕过去）"""
+    try:
+        import ctypes
+        u = ctypes.windll.user32; k = ctypes.windll.kernel32
+        u.ShowWindow(h, 9 if u.IsIconic(h) else 5)
+        u.keybd_event(0x12, 0, 0, 0); u.keybd_event(0x12, 0, 2, 0)      # 按一下 Alt
+        fg = u.GetForegroundWindow()
+        t1 = u.GetWindowThreadProcessId(fg, None); t2 = k.GetCurrentThreadId()
+        u.AttachThreadInput(t2, t1, True)
+        u.BringWindowToTop(h); u.SetForegroundWindow(h); u.SetFocus(h)
+        u.AttachThreadInput(t2, t1, False)
+        for _ in range(10):
+            if u.GetForegroundWindow() == h: return True
+            time.sleep(0.05)
+        u.SwitchToThisWindow(h, True); time.sleep(0.2)
+        return u.GetForegroundWindow() == h
+    except Exception:
+        return False
+
+def _windows():
+    """列出所有顶层窗口：(句柄, 标题, 进程名, 是否可见, 面积)"""
+    out = []
     try:
         import ctypes
         from ctypes import wintypes
-        u = ctypes.windll.user32
-        found = []
+        u = ctypes.windll.user32; k = ctypes.windll.kernel32
+        me = os.getpid()
         def cb(h, _):
             n = u.GetWindowTextLengthW(h)
-            if n:
-                buf = ctypes.create_unicode_buffer(n + 1); u.GetWindowTextW(h, buf, n + 1)
-                if any(w.lower() in buf.value.lower() for w in words) and "08" != buf.value:
-                    found.append(h)
+            if not n: return True
+            buf = ctypes.create_unicode_buffer(n + 1); u.GetWindowTextW(h, buf, n + 1)
+            pid = wintypes.DWORD(); u.GetWindowThreadProcessId(h, ctypes.byref(pid))
+            if pid.value == me: return True
+            exe = ""
+            hp = k.OpenProcess(0x1000, False, pid.value)
+            if hp:
+                sz = wintypes.DWORD(520); pb = ctypes.create_unicode_buffer(520)
+                if k.QueryFullProcessImageNameW(hp, 0, pb, ctypes.byref(sz)): exe = os.path.basename(pb.value)
+                k.CloseHandle(hp)
+            r = wintypes.RECT(); u.GetWindowRect(h, ctypes.byref(r))
+            vis = bool(u.IsWindowVisible(h)) or bool(u.IsIconic(h))
+            out.append((h, buf.value, exe, vis, max(0, r.right - r.left) * max(0, r.bottom - r.top)))
             return True
         u.EnumWindows(ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)(cb), 0)
-        for h in found:
-            u.ShowWindow(h, 9); u.SetForegroundWindow(h); return True
     except Exception:
         pass
+    return out
+
+def _focus_proc(exes, titles=()):
+    """按进程名找到软件的主窗口并调到前台（比按标题找准，不会误点到别的窗口）"""
+    el = {e.lower() for e in exes}
+    ws = [w for w in _windows() if w[2].lower() in el]
+    if titles:
+        ws = sorted(ws, key=lambda w: not any(t.lower() in w[1].lower() for t in titles))
+    ws = sorted(ws, key=lambda w: (not w[3], -w[4]))
+    for w in ws[:3]:
+        if w[4] < 200 * 200 and w[3]: continue
+        if _force_fg(w[0]): return w[0]
+    return None
+
+def _fg_exe():
+    try:
+        import ctypes
+        h = ctypes.windll.user32.GetForegroundWindow()
+        return next((w[2] for w in _windows() if w[0] == h), "")
+    except Exception:
+        return ""
+
+def _focus_title(*words):
+    """找标题里含关键词的窗口并调到前台"""
+    for h, t, exe, vis, area in sorted(_windows(), key=lambda w: (not w[3], -w[4])):
+        if vis and any(w.lower() in t.lower() for w in words):
+            if _force_fg(h): return True
     return False
+
+def _search_key(name):
+    """微信/QQ 搜索支持拼音：纯中文名字转成拼音搜，语音识别听成同音字也能找到人"""
+    if re.fullmatch(r"[\u4e00-\u9fff]{1,8}", name):
+        return "".join(lazy_pinyin(name))
+    return name
 
 # 已经在运行的软件只调出窗口，不重新启动（避免重新登录）：(叫法, 进程名, 窗口标题关键词, 显示快捷键)
 APP_PROC = [
@@ -171,10 +233,9 @@ WECHAT_EXES = ("WeChat.exe", "Weixin.exe", "WeChatAppEx.exe")
 def _show_wechat():
     """微信已经在运行：只把窗口叫出来，绝不重新启动（重新启动会让你重新登录）"""
     import pyautogui
-    if _focus_title("微信", "Weixin", "WeChat"):
-        time.sleep(0.5); return True
+    if _focus_proc(WECHAT_EXES, ("微信", "Weixin", "WeChat")): time.sleep(0.4); return True
     pyautogui.hotkey("ctrl", "alt", "w"); time.sleep(0.8)   # 微信默认的“显示窗口”快捷键
-    return True
+    return bool(_focus_proc(WECHAT_EXES, ("微信", "Weixin", "WeChat")))
 
 def open_app(name):
     key = name.strip().lower()
@@ -182,7 +243,7 @@ def open_app(name):
         _show_wechat(); return "微信已经开着，帮您调出来了"
     for names, exes, titles, hot in APP_PROC:
         if any(n == key or n in key for n in names) and _running(*exes):
-            if not _focus_title(*titles) and hot:
+            if not _focus_proc(exes, titles) and not _focus_title(*titles) and hot:
                 import pyautogui; pyautogui.hotkey(*hot)
             return f"{names[0]}已经开着，帮您调出来了"
     lnk = _find_shortcut(name)
@@ -291,32 +352,40 @@ def media(action):
 def _focus_wechat():
     if _running(*WECHAT_EXES):
         return _show_wechat()
-    open_app("微信"); time.sleep(4)
+    open_app("微信"); time.sleep(5)
     return _show_wechat()
 
-def send_wechat(contact, message):
+def _chat_send(exes, app, contact, message):
+    """微信/QQ 通用：搜联系人 → 回车进聊天 → 粘贴 → 发送；每一步确认窗口还在前台"""
     import pyperclip, pyautogui
-    _focus_wechat()
-    pyautogui.hotkey("ctrl", "f"); time.sleep(0.5)
-    pyperclip.copy(contact); pyautogui.hotkey("ctrl", "v"); time.sleep(1.5)
-    pyautogui.press("enter"); time.sleep(1.0)
+    on_top = lambda: _fg_exe().lower() in {e.lower() for e in exes}
+    if not on_top():
+        return None
+    pyautogui.hotkey("ctrl", "f"); time.sleep(0.6)
+    pyautogui.hotkey("ctrl", "a")
+    pyperclip.copy(_search_key(contact)); pyautogui.hotkey("ctrl", "v"); time.sleep(1.6)
+    if not on_top(): return None
+    pyautogui.press("enter"); time.sleep(1.2)
+    if not on_top(): return None
     pyperclip.copy(message); pyautogui.hotkey("ctrl", "v"); time.sleep(0.3)
     pyautogui.press("enter")
-    return f"已在微信给 {contact} 发送：{message}（如果联系人名字不准，可能发错人，请看一眼）"
+    return f"已在{app}给 {contact} 发了：{message}"
+
+def send_wechat(contact, message):
+    if not _focus_wechat():
+        return screen_task(f"打开电脑微信（任务栏里的绿色微信图标，已经登录了，不要退出），搜索联系人“{contact}”，点开对话，在输入框输入“{message}”并按回车发送")
+    r = _chat_send(WECHAT_EXES, "微信", contact, message)
+    return r or screen_task(f"在已经打开的电脑微信里搜索联系人“{contact}”，点开对话，在输入框输入“{message}”并按回车发送")
 
 def send_qq(contact, message):
-    import pyperclip, pyautogui
-    if _running("QQ.exe"):
-        if not _focus_title("QQ"): pyautogui.hotkey("ctrl", "alt", "z")
-    else:
-        open_app("QQ"); time.sleep(5); _focus_title("QQ")
-    time.sleep(0.6)
-    pyautogui.hotkey("ctrl", "f"); time.sleep(0.5)
-    pyperclip.copy(contact); pyautogui.hotkey("ctrl", "v"); time.sleep(1.5)
-    pyautogui.press("enter"); time.sleep(1.0)
-    pyperclip.copy(message); pyautogui.hotkey("ctrl", "v"); time.sleep(0.3)
-    pyautogui.press("enter")
-    return f"已在QQ给 {contact} 发送：{message}"
+    import pyautogui
+    ok = _focus_proc(("QQ.exe",), ("QQ",))
+    if not ok and not _running("QQ.exe"):
+        open_app("QQ"); time.sleep(6); ok = _focus_proc(("QQ.exe",), ("QQ",))
+    if not ok:
+        pyautogui.hotkey("ctrl", "alt", "z"); time.sleep(0.8); ok = _focus_proc(("QQ.exe",), ("QQ",))
+    r = _chat_send(("QQ.exe",), "QQ", contact, message) if ok else None
+    return r or screen_task(f"在电脑QQ里搜索好友或群“{contact}”，点开对话，在输入框输入“{message}”并按回车发送")
 
 def douyin_dm(contact, message):
     open_app("抖音"); time.sleep(3)
@@ -666,6 +735,7 @@ def voice_loop():
             woke, rest = split_wake(text)
             UI["awake_until"] = awake_until
             if woke:
+                UI["fx"] = ("transform", time.time())
                 log("你", text)
                 if rest and len(rest) >= 2:
                     handle(rest); awake_until = time.time() + CFG["awake_seconds"]
@@ -693,6 +763,8 @@ def _ding():
 
 def handle(text):
     threading.Thread(target=_ding, daemon=True).start()
+    if not UI.get("fx") or time.time() - UI["fx"][1] > 1.8:
+        UI["fx"] = ("beam", time.time())
     UI["state"] = "think"
     with busy:
         if re.search(r"(退出|关闭)(程序|贾维斯|08)|再见(贾维斯|08)", text):
@@ -732,17 +804,38 @@ class Buddy:
         self.font = ("Microsoft YaHei UI", 11)
         self.imgs = {}
         ad = os.path.join(BASE, "avatar")
-        for st in ("idle", "listen", "think", "talk", "talk2"):
-            for ext in ("png", "gif"):
-                fp = os.path.join(ad, f"{st}.{ext}")
+        self.pimgs = {}
+        try:
+            from PIL import Image, ImageTk, ImageEnhance
+            self._ImageTk = ImageTk
+            for st in ("idle", "listen", "think", "talk", "talk2"):
+                fp = os.path.join(ad, f"{st}.png")
+                if os.path.exists(fp):
+                    im = Image.open(fp).convert("RGBA")
+                    f = min(260 / im.width, 290 / im.height, 1.0)
+                    if f < 1: im = im.resize((int(im.width * f), int(im.height * f)), Image.LANCZOS)
+                    self.pimgs[st] = im
+                    self.imgs[st] = ImageTk.PhotoImage(im)
+            base = self.pimgs.get("idle")
+            self.grow = []      # 变身：从小到大 + 发光
+            if base:
+                for i in range(1, 13):
+                    k = 0.15 + 0.85 * (i / 12) ** 0.7
+                    im = base.resize((max(1, int(base.width * k)), max(1, int(base.height * k))), Image.LANCZOS)
+                    im = ImageEnhance.Brightness(im).enhance(2.2 - 1.2 * i / 12)
+                    self.grow.append(ImageTk.PhotoImage(im))
+        except Exception as e:
+            log("系统", f"PIL 头像加载失败，改用普通方式: {e!r}")
+            self.grow = []
+            for st in ("idle", "listen", "think", "talk", "talk2"):
+                fp = os.path.join(ad, f"{st}.png")
                 if os.path.exists(fp):
                     try:
                         im = tk.PhotoImage(file=fp)
                         f = max(1, max(im.width() // 260, im.height() // 290) + (1 if max(im.width(), im.height()) > 290 else 0))
                         self.imgs[st] = im.subsample(f) if f > 1 else im
-                    except Exception as e:
-                        log("系统", f"头像图片读不了 {fp}: {e}")
-                    break
+                    except Exception as e2:
+                        log("系统", f"头像图片读不了 {fp}: {e2}")
         self.t0 = time.time(); self.blink_at = time.time() + 3
         self.c.bind("<ButtonPress-1>", self._press); self.c.bind("<B1-Motion>", self._drag)
         self.c.bind("<Double-Button-1>", lambda e: self.type_box())
@@ -860,6 +953,61 @@ class Buddy:
         self.c.create_line(131, y2 + 8, 149, y2 + 8, fill=bg, width=3)
         self.c.tag_lower(tail); self.c.tag_lower(r)
 
+    # ---- 特效：变身组装、眼睛射光、胸口反应堆 ----
+    def _eyes(self, img, bob):
+        w, h = img.width(), img.height()
+        x0, y0 = 140 - w / 2, self.H - 6 - h + bob
+        return ((x0 + w * 0.372, y0 + h * 0.215), (x0 + w * 0.628, y0 + h * 0.215)), (x0 + w * 0.5, y0 + h * 0.49)
+
+    def draw_assemble(self, ft):
+        import math
+        c = self.c; cx, cy = 140, self.H - 150
+        p = ft / 0.75
+        for i in range(14):           # 装甲碎片从四周飞回来
+            a = i * 2 * math.pi / 14 + p * 3
+            r = 170 * (1 - p) + 10
+            x, y = cx + r * math.cos(a), cy + r * math.sin(a) * 1.3
+            col = "#d4a63a" if i % 2 else "#c0262d"
+            c.create_polygon(x - 9, y, x, y - 6, x + 9, y, x, y + 6, fill=col, outline="#ffe9a8")
+        for k in range(3):            # 金色能量环
+            rr = 30 + 60 * ((p * 2 + k / 3) % 1)
+            c.create_oval(cx - rr, cy - rr * 1.6, cx + rr, cy + rr * 1.6, outline="#ffd76a", width=2)
+
+    def draw_glow(self, st, now, img, bob, fx, ft):
+        import math
+        c = self.c
+        (le, re_), core = self._eyes(img, bob)
+        # 变身结束：白光一闪 + 冲击波
+        if fx and fx[0] == "transform" and 0.75 <= ft < 1.1:
+            q = (ft - 0.75) / 0.35
+            r = 40 + 200 * q
+            c.create_oval(core[0] - r, core[1] - r, core[0] + r, core[1] + r, outline="#bff6ff", width=max(1, int(8 * (1 - q))))
+        # 眼睛射光：变身完成后 / 开始干活时
+        beam = None
+        if fx and fx[0] == "transform" and 0.9 <= ft < 1.9: beam = (ft - 0.9) / 1.0
+        if fx and fx[0] == "beam" and ft < 0.7: beam = ft / 0.7
+        if beam is not None:
+            reach = min(1, beam * 2.5); fade = 1 - max(0, beam - 0.6) / 0.4
+            for (ex, ey), tx in ((le, -40), (re_, 320)):
+                x2 = ex + (tx - ex) * reach; y2 = ey - 150 * reach
+                for wdt, col in ((16, "#0a6c8c"), (10, "#29c6f0"), (5, "#9ff0ff"), (2, "#ffffff")):
+                    c.create_line(ex, ey, x2, y2, width=max(1, int(wdt * fade)), fill=col, capstyle="round")
+                c.create_oval(x2 - 10, y2 - 10, x2 + 10, y2 + 10, fill="#e8fdff", outline="#29c6f0", width=3)
+        # 常驻：眼睛亮度随状态变化，胸口反应堆脉冲
+        pulse = 0.5 + 0.5 * math.sin(now * {"think": 9, "talk": 14, "listen": 5}.get(st, 2.5))
+        er = {"think": 7, "talk": 6, "listen": 8}.get(st, 4) + 3 * pulse
+        if st != "idle" or pulse > 0.6:
+            for ex, ey in (le, re_):
+                c.create_oval(ex - er * 1.8, ey - er * 0.8, ex + er * 1.8, ey + er * 0.8, outline="#7fe9ff", width=2)
+        rr = 10 + 6 * pulse
+        c.create_oval(core[0] - rr, core[1] - rr, core[0] + rr, core[1] + rr, outline="#8ff3ff", width=2)
+        if st == "think":
+            a = now * 6
+            for i in range(3):
+                b = a + i * 2.094
+                c.create_arc(core[0] - 22, core[1] - 22, core[0] + 22, core[1] + 22, start=math.degrees(b) % 360, extent=50,
+                             style="arc", outline="#ffd76a", width=3)
+
     def tick(self):
         now = time.time()
         st = UI["state"]
@@ -872,11 +1020,17 @@ class Buddy:
             img = self.imgs.get(key) or self.imgs.get("idle") or next(iter(self.imgs.values()))
         if img is not None:
             bob = 4 * __import__("math").sin((now - self.t0) * (8 if st == "talk" else 2))
-            self.c.create_image(140, self.H - 6 + bob, image=img, anchor="s")
+            fx = UI.get("fx"); ft = now - fx[1] if fx else 99
+            if fx and fx[0] == "transform" and ft < 0.75 and self.grow:
+                self.draw_assemble(ft)
+                self.c.create_image(140, self.H - 6, image=self.grow[min(len(self.grow) - 1, int(ft / 0.75 * len(self.grow)))], anchor="s")
+            else:
+                self.c.create_image(140, self.H - 6 + bob, image=img, anchor="s")
+                self.draw_glow(st, now, img, bob, fx, ft)
         else:
             self.draw_kid(st, now)
         self.draw_bubble(now)
-        self.root.after(70, self.tick)
+        self.root.after(40 if UI.get("fx") and now - UI["fx"][1] < 2 else 70, self.tick)
 
 def run_voice():
     try:
