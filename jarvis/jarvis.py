@@ -128,8 +128,49 @@ def _find_shortcut(name):
             cands.append((score, len(base), p))
     return min(cands)[2] if cands else None
 
+def _running(*exes):
+    try:
+        out = subprocess.run("tasklist /fo csv /nh", capture_output=True, text=True, creationflags=NOWIN, encoding="gbk", errors="ignore").stdout.lower()
+        return any(f'"{e.lower()}"' in out for e in exes)
+    except Exception:
+        return False
+
+def _focus_title(*words):
+    """找标题里含关键词的可见/最小化窗口并调到前台"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        found = []
+        def cb(h, _):
+            n = u.GetWindowTextLengthW(h)
+            if n:
+                buf = ctypes.create_unicode_buffer(n + 1); u.GetWindowTextW(h, buf, n + 1)
+                if any(w.lower() in buf.value.lower() for w in words) and "08" != buf.value:
+                    found.append(h)
+            return True
+        u.EnumWindows(ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)(cb), 0)
+        for h in found:
+            u.ShowWindow(h, 9); u.SetForegroundWindow(h); return True
+    except Exception:
+        pass
+    return False
+
+WECHAT_EXES = ("WeChat.exe", "Weixin.exe", "WeChatAppEx.exe")
+def _show_wechat():
+    """微信已经在运行：只把窗口叫出来，绝不重新启动（重新启动会让你重新登录）"""
+    import pyautogui
+    if _focus_title("微信", "Weixin", "WeChat"):
+        time.sleep(0.5); return True
+    pyautogui.hotkey("ctrl", "alt", "w"); time.sleep(0.8)   # 微信默认的“显示窗口”快捷键
+    return True
+
 def open_app(name):
     key = name.strip().lower()
+    if key in ("微信", "wechat", "weixin", "vx") and _running(*WECHAT_EXES):
+        _show_wechat(); return "微信已经开着，帮您调出来了"
+    if key in ("qq",) and _running("QQ.exe"):
+        _focus_title("QQ"); return "QQ 已经开着，帮您调出来了"
     lnk = _find_shortcut(name)
     if lnk:
         os.startfile(lnk); return f"已打开 {os.path.basename(lnk)}"
@@ -234,27 +275,10 @@ def media(action):
     pyautogui.press({"play_pause": "playpause", "next": "nexttrack", "prev": "prevtrack"}[action]); return "好的"
 
 def _focus_wechat():
-    """把微信窗口调到前台（先试快捷键 Ctrl+Alt+W，再试打开程序）"""
-    import pyautogui
-    try:
-        import ctypes
-        user32 = ctypes.windll.user32
-        hwnd = user32.FindWindowW("WeChatMainWndForPC", None) or user32.FindWindowW(None, "微信") or user32.FindWindowW(None, "Weixin")
-        if hwnd:
-            user32.ShowWindow(hwnd, 9); user32.SetForegroundWindow(hwnd); time.sleep(0.6); return True
-    except Exception:
-        pass
-    open_app("微信"); time.sleep(3.5)
-    try:
-        import ctypes
-        user32 = ctypes.windll.user32
-        hwnd = user32.FindWindowW("WeChatMainWndForPC", None) or user32.FindWindowW(None, "微信") or user32.FindWindowW(None, "Weixin")
-        if hwnd:
-            user32.ShowWindow(hwnd, 9); user32.SetForegroundWindow(hwnd); time.sleep(0.6); return True
-    except Exception:
-        pass
-    pyautogui.hotkey("ctrl", "alt", "w"); time.sleep(1)
-    return True
+    if _running(*WECHAT_EXES):
+        return _show_wechat()
+    open_app("微信"); time.sleep(4)
+    return _show_wechat()
 
 def send_wechat(contact, message):
     import pyperclip, pyautogui
