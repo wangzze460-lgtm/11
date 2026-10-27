@@ -53,7 +53,11 @@ CFG = load_cfg()
 
 def log(who, msg):
     color = {"你": "\033[96m", "MBS": "\033[93m", "系统": "\033[90m", "执行": "\033[92m"}.get(who, "")
-    try: print(f"[{datetime.datetime.now():%H:%M:%S}] {who}：{msg}", flush=True)
+    line = f"[{datetime.datetime.now():%H:%M:%S}] {who}：{msg}"
+    try: print(line, flush=True)
+    except Exception: pass
+    try:
+        with open(os.path.join(BASE, "jarvis.log"), "a", encoding="utf-8") as f: f.write(line + "\n")
     except Exception: pass
     if who in ("你", "小李"):
         UI["bubble"] = (who, msg); UI["bubble_t"] = time.time()
@@ -72,7 +76,7 @@ def speak(text):
         try:
             import edge_tts, pygame
             path = os.path.join(tempfile.gettempdir(), f"jarvis_{int(time.time()*1000)}.mp3")
-            asyncio.run(edge_tts.Communicate(text, CFG["voice"], rate="+8%").save(path))
+            asyncio.run(asyncio.wait_for(edge_tts.Communicate(text, CFG["voice"], rate="+8%").save(path), 8))
             pygame.mixer.init()
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
@@ -331,11 +335,11 @@ def split_wake(text):
     for i, p in enumerate(py):
         idx.append(len(joined)); joined += p
     best = None
-    for w in WAKE + ["xiaoli", "jiaweisi", "jiaweishi", "jiaweis", "jiawisi"]:
+    for w in WAKE + ["xiaoli", "xiaoni", "xiaodi", "xiaoyi", "xiaoqi", "xiaoliu", "xiaolin", "xiaoling", "shaoli", "xiaole", "jiaweisi", "jiaweishi", "jiaweis", "jiawisi", "jiawei"]:
         pos = joined.find(w)
         if pos >= 0 and (best is None or pos < best[0]):
             best = (pos, pos + len(w))
-    if best is None or best[0] > len("heihei"):   # 名字要在句子开头附近
+    if best is None or best[0] > len("heiheihei"):   # 名字要在句子开头附近
         return False, ""
     end = best[1]
     while True:   # 连喊两遍“小李小李”也去掉
@@ -385,6 +389,7 @@ def voice_loop():
                 drain(q, rec)
             else:
                 log("系统", f"（听到：{text}，没叫小李，忽略）")
+                UI["bubble"] = ("听到", f"{text}（先叫“小李”哦）"); UI["bubble_t"] = time.time()
 
 def drain(q, rec):
     while not q.empty():
@@ -549,7 +554,7 @@ class Buddy:
         if not b or now - UI["bubble_t"] > 12: return
         who, msg = b
         if len(msg) > 90: msg = msg[:88] + "…"
-        txt = ("你：" if who == "你" else "") + msg
+        txt = {"你": "你：", "听到": "我听到："}.get(who, "") + msg
         t = self.c.create_text(140, 16, text=txt, font=self.font, width=240, anchor="n",
                                fill="#555" if who == "你" else "#111")
         x1, y1, x2, y2 = self.c.bbox(t)
