@@ -1,0 +1,9 @@
+openai>=1.30
+vosk>=0.3.45
+sounddevice
+pypinyin
+edge-tts
+pygame
+pyttsx3
+pyautogui
+pyperclip
