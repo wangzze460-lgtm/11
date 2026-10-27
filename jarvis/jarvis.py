@@ -40,7 +40,7 @@ def load_cfg():
 CFG = load_cfg()
 
 def log(who, msg):
-    color = {"你": "\033[96m", "贾维斯": "\033[93m", "系统": "\033[90m", "执行": "\033[92m"}.get(who, "")
+    color = {"你": "\033[96m", "MBS": "\033[93m", "系统": "\033[90m", "执行": "\033[92m"}.get(who, "")
     print(f"{color}[{datetime.datetime.now():%H:%M:%S}] {who}：{msg}\033[0m", flush=True)
 
 # ---------------- 语音合成 ----------------
@@ -48,7 +48,7 @@ speaking = threading.Event()
 def speak(text):
     if not text:
         return
-    log("贾维斯", text)
+    log("MBS", text)
     speaking.set()
     try:
         try:
@@ -237,7 +237,7 @@ TOOLS = [
     T("now_time", "查询当前日期时间"),
 ]
 
-SYSTEM = (f"你是贾维斯（JARVIS），用户的私人 AI 管家，运行在用户的 Windows 电脑上。称呼用户为“{CFG['call_user']}”。"
+SYSTEM = (f"你叫 MBS（也可以叫你贾维斯），用户的私人 AI 管家，运行在用户的 Windows 电脑上。称呼用户为“{CFG['call_user']}”。"
           f"回答用简短口语化中文，一般不超过两句话，因为会被朗读出来；不要用 Markdown、列表或表情。"
           f"需要操作电脑时直接调用工具，做完用一句话汇报结果。用户桌面路径：{DESKTOP}。"
           f"删除文件、关机等危险操作你没有权限，礼貌说明即可。")
@@ -275,10 +275,33 @@ def chat(user_text):
 # ---------------- 唤醒词 ----------------
 from pypinyin import lazy_pinyin
 WAKE = [w.replace(" ", "") for w in CFG["wake_words"]]
+MBS_PRE = {"hei", "hai", "an", "dan", "en", "wan", "ai", "em"}
+MBS_POST = {"si", "shi", "ai", "an"}
+def _mbs(py):
+    """在开头找 MBS（Vosk 常听成：必死 / 但必死 / 但彼岸 / 完毕 / 黑暗必死）。返回唤醒词占的音节数，没有返回 0"""
+    for start in range(0, min(3, len(py))):
+        if py[start] != "bi":
+            continue
+        pre = py[:start]
+        if any(p not in MBS_PRE for p in pre):
+            continue
+        n = start + 1
+        if n < len(py) and py[n] in MBS_POST:
+            return n + 1
+        if pre:
+            return n
+    return 0
 def split_wake(text):
     """返回 (是否唤醒, 唤醒词之后的内容)"""
-    t = text.replace(" ", "")
-    py = lazy_pinyin(t)
+    t = re.sub(r"\s+", "", text)
+    low = t.lower()
+    m = re.match(r"(hey|嘿)?m\s*b\s*s", low)
+    if m:
+        return True, t[m.end():].lstrip("，,。 ")
+    py = lazy_pinyin(t)  # 每个汉字一个音节
+    k = _mbs(py)
+    if k:
+        return True, t[k:].lstrip("，,。 ")
     joined = ""; idx = []
     for i, p in enumerate(py):
         idx.append(len(joined)); joined += p
@@ -303,9 +326,9 @@ def main():
     def cb(indata, frames, t, status):
         if not speaking.is_set():
             q.put(bytes(indata))
-    print("\n" + "=" * 46 + "\n  J.A.R.V.I.S. 已启动  —— 说「贾维斯」唤醒\n  也可以直接在这个窗口打字回车\n" + "=" * 46 + "\n")
+    print("\n" + "=" * 46 + "\n  J.A.R.V.I.S. 已启动  —— 说「MBS」或「贾维斯」唤醒\n  也可以直接在这个窗口打字回车\n" + "=" * 46 + "\n")
     threading.Thread(target=keyboard_loop, daemon=True).start()
-    speak(f"贾维斯已上线，随时为您服务，{CFG['call_user']}。")
+    speak(f"MBS 已上线，随时为您服务，{CFG['call_user']}。")
     awake_until = 0
     with sd.RawInputStream(samplerate=16000, blocksize=8000, dtype="int16", channels=1, callback=cb):
         while True:
@@ -330,7 +353,7 @@ def main():
                 handle(text); awake_until = time.time() + CFG["awake_seconds"]
                 drain(q, rec)
             else:
-                log("系统", f"（听到：{text}，没叫贾维斯，忽略）")
+                log("系统", f"（听到：{text}，没叫 MBS，忽略）")
 
 def drain(q, rec):
     while not q.empty():
@@ -340,7 +363,7 @@ def drain(q, rec):
 busy = threading.Lock()
 def handle(text):
     with busy:
-        if re.search(r"(退出|关闭)(程序|贾维斯)|再见贾维斯", text):
+        if re.search(r"(退出|关闭)(程序|贾维斯|MBS)|再见(贾维斯|MBS)", text):
             speak(f"好的{CFG['call_user']}，再见。"); os._exit(0)
         try:
             reply = chat(text)
