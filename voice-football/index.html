@@ -186,6 +186,11 @@ const video = document.getElementById('video');
 const statusEl = document.getElementById('status');
 const valEl = document.getElementById('val');
 const fillEl = document.getElementById('fill');
+const state = {
+  targetBloom: 0, bloom: 0,
+  targetPos: new THREE.Vector3(0, 0, 0), pos: new THREE.Vector3(0, 0, 0),
+  finger: new THREE.Vector3(99, 99, 99), hasHand: false, pointer: false,
+};
 let analyser = null, buf = null, level = 0, mouseDown = false;
 async function initHands() {}
 async function initCamera() {
