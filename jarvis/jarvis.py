@@ -156,6 +156,17 @@ def _focus_title(*words):
         pass
     return False
 
+# 已经在运行的软件只调出窗口，不重新启动（避免重新登录）：(叫法, 进程名, 窗口标题关键词, 显示快捷键)
+APP_PROC = [
+    (("qq",), ("QQ.exe",), ("QQ",), ("ctrl", "alt", "z")),
+    (("抖音", "douyin"), ("douyin.exe", "抖音.exe", "Douyin.exe"), ("抖音",), None),
+    (("剪映",), ("JianyingPro.exe", "CapCut.exe"), ("剪映",), None),
+    (("豆包",), ("Doubao.exe",), ("豆包",), None),
+    (("向日葵",), ("SunloginClient.exe",), ("向日葵",), None),
+    (("wps",), ("wps.exe", "wpsoffice.exe"), ("WPS",), None),
+    (("uu远程",), ("UURemote.exe", "uu_remote.exe"), ("UU远程",), None),
+    (("闲鱼助手", "ydisks"), ("Ydisks.exe",), ("闲鱼",), None),
+]
 WECHAT_EXES = ("WeChat.exe", "Weixin.exe", "WeChatAppEx.exe")
 def _show_wechat():
     """微信已经在运行：只把窗口叫出来，绝不重新启动（重新启动会让你重新登录）"""
@@ -169,8 +180,11 @@ def open_app(name):
     key = name.strip().lower()
     if key in ("微信", "wechat", "weixin", "vx") and _running(*WECHAT_EXES):
         _show_wechat(); return "微信已经开着，帮您调出来了"
-    if key in ("qq",) and _running("QQ.exe"):
-        _focus_title("QQ"); return "QQ 已经开着，帮您调出来了"
+    for names, exes, titles, hot in APP_PROC:
+        if any(n == key or n in key for n in names) and _running(*exes):
+            if not _focus_title(*titles) and hot:
+                import pyautogui; pyautogui.hotkey(*hot)
+            return f"{names[0]}已经开着，帮您调出来了"
     lnk = _find_shortcut(name)
     if lnk:
         os.startfile(lnk); return f"已打开 {os.path.basename(lnk)}"
@@ -290,6 +304,25 @@ def send_wechat(contact, message):
     pyautogui.press("enter")
     return f"已在微信给 {contact} 发送：{message}（如果联系人名字不准，可能发错人，请看一眼）"
 
+def send_qq(contact, message):
+    import pyperclip, pyautogui
+    if _running("QQ.exe"):
+        if not _focus_title("QQ"): pyautogui.hotkey("ctrl", "alt", "z")
+    else:
+        open_app("QQ"); time.sleep(5); _focus_title("QQ")
+    time.sleep(0.6)
+    pyautogui.hotkey("ctrl", "f"); time.sleep(0.5)
+    pyperclip.copy(contact); pyautogui.hotkey("ctrl", "v"); time.sleep(1.5)
+    pyautogui.press("enter"); time.sleep(1.0)
+    pyperclip.copy(message); pyautogui.hotkey("ctrl", "v"); time.sleep(0.3)
+    pyautogui.press("enter")
+    return f"已在QQ给 {contact} 发送：{message}"
+
+def douyin_dm(contact, message):
+    open_app("抖音"); time.sleep(3)
+    return screen_task(f"在抖音电脑版里点开“私信”（通常在右上角，纸飞机或消息图标），在私信列表里找到并点开“{contact}”的对话"
+                       f"（找不到就用私信里的搜索框搜“{contact}”），点一下底部输入框，输入“{message}”，按回车发送。发出去就结束，并汇报。")
+
 def douyin_live(keyword=""):
     from urllib.parse import quote
     if keyword:
@@ -377,7 +410,7 @@ def lock_screen():
 def now_time():
     return datetime.datetime.now().strftime("现在是 %Y年%m月%d日 %H:%M，星期") + "一二三四五六日"[datetime.datetime.now().weekday()]
 
-TOOLS_IMPL = {f.__name__: f for f in [screen_task, send_wechat, douyin_live, miaoshou, open_app, open_url, web_search, list_desktop, organize_desktop, undo_organize,
+TOOLS_IMPL = {f.__name__: f for f in [screen_task, send_wechat, send_qq, douyin_dm, douyin_live, miaoshou, open_app, open_url, web_search, list_desktop, organize_desktop, undo_organize,
               find_file, open_path, create_note, type_text, press_keys, volume, media, screenshot, lock_screen, now_time]}
 
 def T(name, desc, props=None, req=None):
@@ -387,6 +420,8 @@ S = lambda d: {"type": "string", "description": d}
 TOOLS = [
     T("screen_task", "看着屏幕自己用鼠标键盘完成任务（点按钮、填表、在网页或软件里一步步操作，其他工具做不了时用它）", {"goal": S("要完成的具体任务，写清楚")}, ["goal"]),
     T("send_wechat", "用电脑微信给某个联系人或群发一条消息", {"contact": S("联系人备注名或群名"), "message": S("要发的内容")}, ["contact", "message"]),
+    T("send_qq", "用电脑QQ给某个好友或群发消息", {"contact": S("好友备注或群名"), "message": S("内容")}, ["contact", "message"]),
+    T("douyin_dm", "在抖音电脑版给某人发私信", {"contact": S("对方昵称"), "message": S("内容")}, ["contact", "message"]),
     T("douyin_live", "打开抖音看直播，可带主播名或关键词", {"keyword": S("主播名或直播关键词，可留空")}),
     T("miaoshou", "打开妙手ERP（店铺上架/采集商品/看订单）", {"link": S("要采集上架的商品链接，可留空")}),
     T("open_app", "打开电脑上的软件，如微信、记事本、浏览器、QQ音乐、剪映", {"name": S("软件名")}, ["name"]),
@@ -409,10 +444,16 @@ TOOLS = [
 
 SYSTEM = (f"你叫零八（写作08，也可以叫你贾维斯），用户的私人 AI 管家，运行在用户的 Windows 电脑上。称呼用户为“{CFG['call_user']}”。"
           f"回答用简短口语化中文，一般不超过两句话，因为会被朗读出来；不要用 Markdown、列表或表情。"
-          f"需要操作电脑时直接调用工具，做完用一句话汇报结果。发微信用 send_wechat，看抖音直播用 douyin_live，妙手上架用 miaoshou；专用工具做不到的界面操作（点按钮、填表、在软件或网页里一步步做）用 screen_task。"
+          f"需要操作电脑时直接调用工具，做完用一句话汇报结果。发微信用 send_wechat，发QQ用 send_qq，抖音私信用 douyin_dm，看抖音直播用 douyin_live，妙手上架用 miaoshou；专用工具做不到的界面操作（点按钮、填表、在软件或网页里一步步做）用 screen_task。"
           f"用户桌面路径：{DESKTOP}。"
           f"删除文件、关机等危险操作你没有权限，礼貌说明即可。")
 
+try:
+    _desk = sorted({os.path.splitext(f)[0] for f in os.listdir(DESKTOP) if not BAD_LNK.search(f)})[:80]
+    SYSTEM += ("用户桌面上的东西（打开时把名字原样传给 open_app，比如店铺名的 Chrome 快捷方式“美客多”“Ozon”“eMAG”就是各自店铺后台的浏览器）："
+               + "、".join(_desk) + "。已经开着的软件 open_app 只会把窗口调出来，不会重启。")
+except Exception:
+    pass
 history = [{"role": "system", "content": SYSTEM}]
 
 def ask_ai(client, msgs):
@@ -443,12 +484,16 @@ def _client():
         _CLIENT["k"] = k; _CLIENT["c"] = OpenAI(api_key=k[0], base_url=k[1], timeout=20)
     return _CLIENT["c"]
 
-QUICK_TOOLS = {"open_app", "open_url", "web_search", "douyin_live", "miaoshou", "send_wechat", "volume", "media",
+QUICK_TOOLS = {"send_qq", "douyin_dm", "open_app", "open_url", "web_search", "douyin_live", "miaoshou", "send_wechat", "volume", "media",
                "screenshot", "lock_screen", "now_time", "type_text", "press_keys", "create_note", "organize_desktop", "undo_organize"}
 
 def fast_path(t):
     """常用指令本地直接执行，不用等 AI"""
     t = t.strip("，。！？,.!? ")
+    m = re.match(r"^(?:帮我)?(?:在抖音上?)?给(.{1,12}?)发(?:个|条)?抖音私信(?:说)?[，,：:]?(.+)$", t) or re.match(r"^(?:帮我)?抖音私信(.{1,12}?)(?:说)[，,：:]?(.+)$", t)
+    if m: return douyin_dm(m.group(1), m.group(2))
+    m = re.match(r"^(?:帮我)?(?:在QQ上?)?给(.{1,12}?)发(?:个|条)?(?:QQ|qq)(?:消息)?(?:说)?[，,：:]?(.+)$", t)
+    if m: return send_qq(m.group(1), m.group(2))
     m = re.match(r"^(?:帮我)?给(.{1,12}?)发(?:个|条)?(?:微信|消息|信息)?(?:说)?[，,：:]?(.+)$", t)
     if m and len(m.group(2)) >= 1:
         return send_wechat(m.group(1), m.group(2))
