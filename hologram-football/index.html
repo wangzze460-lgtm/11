@@ -72,7 +72,8 @@ const viewW = () => VIEW_H * camera.aspect;
 
 // ---------- 背景 ----------
 const BG = {};
-for (const n of ['stadium', 'space', 'cyber', 'beach']) { const im = new Image(); im.src = 'bg/' + n + '.jpg'; BG[n] = im; }
+const BG_BASE = /githack|github/.test(location.hostname) ? 'https://raw.githubusercontent.com/wangzze460-lgtm/11/main/hologram-football/bg/' : 'bg/';
+for (const n of ['stadium', 'space', 'cyber', 'beach']) { const im = new Image(); im.crossOrigin = 'anonymous'; im.src = BG_BASE + n + '.jpg'; BG[n] = im; }
 const camVideo = document.createElement('video'); camVideo.muted = true; camVideo.playsInline = true;
 let bgName = 'none', camOn = false;
 async function setBG(n) {
@@ -481,7 +482,7 @@ function startRec() {
 recBtn.onclick = () => recorder ? recorder.stop() : startRec();
 function photo() {
   const c = document.createElement('canvas'); c.width = 1080; c.height = 1920; compose(c.getContext('2d'), 1080, 1920);
-  c.toBlob(b => download(b, '声控足球_' + Date.now() + '.png'));
+  try { c.toBlob(b => download(b, '声控足球_' + Date.now() + '.png')); flash('照片已保存'); } catch (e) { flash('拍照失败：' + e.message); }
 }
 
 // ---------- 主循环 ----------
