@@ -396,7 +396,7 @@ def ask_ai(client, msgs):
     from openai import RateLimitError, APIStatusError
     models = [CFG["model"]]
     if "bigmodel" in CFG["base_url"]:
-        models += [m for m in ["glm-4-flash-250414", "glm-4.7-flash", "glm-4-flash"] if m not in models]
+        models = ["glm-4-flash-250414"] + [m for m in [CFG["model"], "glm-4.7-flash", "glm-4-flash"] if m != "glm-4-flash-250414"]
     last = None
     for attempt in range(6):
         m = models[attempt % len(models)]
@@ -411,9 +411,49 @@ def ask_ai(client, msgs):
             raise
     raise last
 
-def chat(user_text):
+_CLIENT = {}
+def _client():
     from openai import OpenAI
-    client = OpenAI(api_key=CFG["api_key"], base_url=CFG["base_url"])
+    k = (CFG["api_key"], CFG["base_url"])
+    if _CLIENT.get("k") != k:
+        _CLIENT["k"] = k; _CLIENT["c"] = OpenAI(api_key=k[0], base_url=k[1], timeout=20)
+    return _CLIENT["c"]
+
+QUICK_TOOLS = {"open_app", "open_url", "web_search", "douyin_live", "miaoshou", "send_wechat", "volume", "media",
+               "screenshot", "lock_screen", "now_time", "type_text", "press_keys", "create_note", "organize_desktop", "undo_organize"}
+
+def fast_path(t):
+    """常用指令本地直接执行，不用等 AI"""
+    t = t.strip("，。！？,.!? ")
+    m = re.match(r"^(?:帮我)?给(.{1,12}?)发(?:个|条)?(?:微信|消息|信息)?(?:说)?[，,：:]?(.+)$", t)
+    if m and len(m.group(2)) >= 1:
+        return send_wechat(m.group(1), m.group(2))
+    if re.search(r"抖音.*直播|直播.*抖音|看直播", t):
+        k = re.sub(r"(帮我)?(打开|去|看)?抖音|看|直播|的|一下", "", t)
+        return douyin_live(k.strip())
+    if re.search(r"妙手", t):
+        return miaoshou()
+    if re.search(r"(音量|声音).*(大|高)", t): return volume("up")
+    if re.search(r"(音量|声音).*(小|低)", t): return volume("down")
+    if re.search(r"静音", t): return volume("mute")
+    if re.search(r"(暂停|继续播放|播放音乐)", t): return media("play_pause")
+    if re.search(r"下一(首|集)", t): return media("next")
+    if re.search(r"上一(首|集)", t): return media("prev")
+    if re.fullmatch(r"(帮我)?截(个)?(图|屏)", t): return screenshot()
+    if re.fullmatch(r"锁(屏|定屏幕)", t): return lock_screen()
+    m = re.fullmatch(r"(?:帮我)?(?:打开|启动|开一下|开)(.{1,10}?)(?:一下)?", t)
+    if m and not re.search(r"网站|网页|搜索|文件", m.group(1)):
+        return open_app(m.group(1))
+    return None
+
+def chat(user_text):
+    r = None
+    try: r = fast_path(user_text)
+    except Exception as e: log("系统", f"快捷指令失败 {e!r}")
+    if r:
+        log("执行", r); history.append({"role": "user", "content": user_text}); history.append({"role": "assistant", "content": r})
+        return re.sub(r"（.*?）", "", r)
+    client = _client()
     history.append({"role": "user", "content": user_text})
     for _ in range(6):
         resp = ask_ai(client, history)
@@ -429,6 +469,10 @@ def chat(user_text):
                     result = f"执行失败：{e}"
                 log("执行", f"{c.function.name} → {str(result)[:120]}")
                 history.append({"role": "tool", "tool_call_id": c.id, "content": str(result)})
+            if all(c.function.name in QUICK_TOOLS for c in msg.tool_calls):
+                reply = "好的，" + "；".join(re.sub(r"（.*?）", "", h["content"]) for h in history[-len(msg.tool_calls):])
+                history.append({"role": "assistant", "content": reply})
+                return reply
             continue
         reply = (msg.content or "").strip()
         history.append({"role": "assistant", "content": reply})
@@ -472,13 +516,15 @@ def voice_loop():
         log("08", "没找到语音模型 model 文件夹，请把整个文件夹解压完整再打开。"); return
     model = Model(MODEL_DIR)
     rec = KaldiRecognizer(model, 16000)
+    try: rec.SetEndpointerDelays(5.0, 0.5, 15.0)   # 说完停 0.5 秒就开始处理
+    except Exception: pass
     q = queue.Queue()
     def cb(indata, frames, t, status):
         if not speaking.is_set():
             q.put(bytes(indata))
     speak(f"08已上线，随时为您服务，{CFG['call_user']}。")
     awake_until = 0
-    with sd.RawInputStream(samplerate=16000, blocksize=8000, dtype="int16", channels=1, callback=cb):
+    with sd.RawInputStream(samplerate=16000, blocksize=3200, dtype="int16", channels=1, callback=cb):
         while True:
             data = q.get()
             if speaking.is_set():
@@ -511,7 +557,14 @@ def drain(q, rec):
     rec.Reset()
 
 busy = threading.Lock()
+def _ding():
+    try:
+        import winsound; winsound.Beep(1200, 90)
+    except Exception: pass
+
 def handle(text):
+    threading.Thread(target=_ding, daemon=True).start()
+    UI["state"] = "think"
     with busy:
         if re.search(r"(退出|关闭)(程序|贾维斯|08)|再见(贾维斯|08)", text):
             speak(f"好的{CFG['call_user']}，再见。"); os._exit(0)
