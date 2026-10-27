@@ -1,0 +1,36 @@
+name: Build JARVIS for Windows
+on:
+  workflow_dispatch:
+  push:
+    paths: ['jarvis/**', '.github/workflows/jarvis.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          pip install -r jarvis/requirements.txt pyinstaller
+      - name: Build exe
+        working-directory: jarvis
+        run: pyinstaller --noconfirm --onedir --console --name JARVIS --collect-all vosk --collect-all edge_tts --collect-data pypinyin --collect-all pyttsx3 --hidden-import pyttsx3.drivers.sapi5 --hidden-import comtypes.stream jarvis.py
+      - name: Add voice model
+        working-directory: jarvis
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip -OutFile model.zip
+          Expand-Archive model.zip -DestinationPath . -Force
+          Move-Item vosk-model-small-cn-0.22 dist/JARVIS/model
+          Copy-Item README.txt dist/JARVIS/
+          Compress-Archive -Path dist/JARVIS -DestinationPath ../JARVIS-win64.zip
+      - name: Release
+        env: { GH_TOKEN: '${{ github.token }}' }
+        shell: bash
+        run: |
+          TAG=jarvis-${{ github.run_number }}
+          gh release create "$TAG" JARVIS-win64.zip --repo "${{ github.repository }}" --title "JARVIS Windows $TAG" --notes "解压后双击 JARVIS.exe"
